@@ -13,7 +13,15 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 description = "Tool for calibrating a SAXS beamline using diffraction grating"
-dependencies = [] # Add project dependencies here, e.g. ["click", "numpy"]
+dependencies = [
+    "numpy",
+    "lmfit",
+    "scipy",
+    "scikit-learn",
+    "matplotlib",
+    "nexusformat",
+    "pyfai",
+]
 dynamic = ["version"]
 license.file = "LICENSE"
 readme = "README.md"
@@ -32,7 +40,7 @@ dev = [
 ]
 
 [project.scripts]
-i22-diffraction-grating-calibration = "gratingcalibration.__main__:main"
+i22-diffraction-grating-calibration = "gratingcalibration.main:main"
 
 [project.urls]
 GitHub = "https://github.com/DiamondLightSource/i22-diffraction-grating-calibration"

@@ -1,0 +1,20 @@
+# Changes here will be overwritten by Copier
+_commit: 5.1.0
+_src_path: https://github.com/DiamondLightSource/python-copier-template.git
+author_email: christopher.brasnett@diamond.ac.uk
+author_name: Chris Brasnett
+component_lifecycle: experimental
+component_owner: group:default/data-analysis
+component_type: application
+description: Tool for calibrating a SAXS beamline using diffraction grating
+distribution_name: gratingcalibration
+docker: true
+docker_debug: false
+docs_type: README
+git_platform: github.com
+github_org: DiamondLightSource
+package_name: gratingcalibration
+pypi: false
+repo_name: i22-diffraction-grating-calibration
+strict_typing: true
+type_checker: pyright

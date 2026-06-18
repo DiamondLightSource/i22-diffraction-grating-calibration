@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: gratingcalibration
+  title: i22-diffraction-grating-calibration
+  description: Tool for calibrating a SAXS beamline using diffraction grating
+spec:
+  type: application
+  lifecycle: experimental
+  owner: group:default/data-analysis

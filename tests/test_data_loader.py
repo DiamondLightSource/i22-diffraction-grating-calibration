@@ -4,6 +4,8 @@ from nexusformat.nexus import NeXusError, NXfield, nxload
 
 from gratingcalibration.data_loader import DataLoader
 
+from .helper_functions import make_fake_file
+
 
 def test_init_loads_everything(make_fake_file):
     """

@@ -7,7 +7,7 @@ from gratingcalibration.detector_calibration import (
     find_multiple_sequence,
 )
 
-from .helper_functions import make_fit_store
+from .helper_functions import make_fake_file, make_fit_store
 
 
 @pytest.mark.parametrize(

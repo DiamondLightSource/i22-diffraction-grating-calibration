@@ -19,10 +19,10 @@ Releases        | <https://github.com/DiamondLightSource/i22-diffraction-grating
 On the DLS module system, you can install this tool as:
 
 ```
-$ module load uv
-$ uv venv 
-$ uv pip install git+https://github.com/DiamondLightSource/i22-diffraction-grating-calibration.git
-$ source .venv/bin/activate
+module load uv
+uv venv 
+uv pip install git+https://github.com/DiamondLightSource/i22-diffraction-grating-calibration.git
+source .venv/bin/activate
 ```
 
 ## Usage

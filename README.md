@@ -20,9 +20,9 @@ On the DLS module system, you can install this tool as:
 
 ```
 $ module load uv
-$ uv venv .venv
+$ uv venv 
+$ uv pip install git+https://github.com/DiamondLightSource/i22-diffraction-grating-calibration.git
 $ source .venv/bin/activate
-$ uv pip install uv pip install git+https://github.com/DiamondLightSource/i22-diffraction-grating-calibration.git
 ```
 
 ## Usage

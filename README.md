@@ -14,15 +14,32 @@ Source          | <https://github.com/DiamondLightSource/i22-diffraction-grating
 Docker          | `docker run ghcr.io/diamondlightsource/i22-diffraction-grating-calibration:latest`
 Releases        | <https://github.com/DiamondLightSource/i22-diffraction-grating-calibration/releases>
 
+## Installation
+
+On the DLS module system, you can install this tool as:
+
+```
+$ module load uv
+$ uv venv .venv
+$ source .venv/bin/activate
+$ uv pip install uv pip install git+https://github.com/DiamondLightSource/i22-diffraction-grating-calibration.git
+```
 
 ## Usage
 
 ```
-$ calibrate --file input.nxs --output output_folder
+$ i22-diffraction-grating-calibration --file /path/to/input.nxs --output /path/to/output/folder --save-plots
 ```
 
-The calibration NeXuS file (SAXS_calibration.nxs) will be stored in the `output_folder`, along with plots made toe show how the calibration has been performed.
+The calibration NeXuS file (SAXS_calibration.nxs) will be stored in the `output_folder`, along with plots made to show how the calibration has been performed.
 
+The final figure generated, `detector_calibration.png`, shows how peaks have been found, fit, and indexed in the azimuthally integrated scattering pattern to calculate the detector distance from the sample. The initial peak identification is performed using [`scipy.signal.find_peaks`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html), using a peak prominance of 0.1. This has performed well in testing, but may not be universally optimal. Should this need fine tuning, the following command could be used instead:
+
+```
+$ i22-diffraction-grating-calibration --file /path/to/input.nxs --output /path/to/output/folder --save-plots --peak-prominance X
+```
+
+where `X` is some float value . Set this lower (than `0.1` to find more peaks, higher to find fewer.
 
 ## What's happening?
 

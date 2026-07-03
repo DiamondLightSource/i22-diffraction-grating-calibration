@@ -1,27 +1,40 @@
+from pathlib import Path
+from typing import Any
+
 import numpy as np
+
+# NXbeam, NXdetector, NXdetector_module, NXinstrument, NXsample and
+# NXtransformations are generated dynamically at import time by nexusformat
+# (see nexusformat.nexus.tree._makeclass), so pyright cannot see them statically.
 from nexusformat.nexus import (
     NeXusError,
-    NXbeam,
+    NXbeam,  # pyright: ignore[reportAttributeAccessIssue]
     NXdata,
-    NXdetector,
-    NXdetector_module,
+    NXdetector,  # pyright: ignore[reportAttributeAccessIssue]
+    NXdetector_module,  # pyright: ignore[reportAttributeAccessIssue]
     NXentry,
     NXfield,
-    NXinstrument,
+    NXinstrument,  # pyright: ignore[reportAttributeAccessIssue]
     NXlink,
     NXroot,
-    NXsample,
-    NXtransformations,
+    NXsample,  # pyright: ignore[reportAttributeAccessIssue]
+    NXtransformations,  # pyright: ignore[reportAttributeAccessIssue]
 )
+
+Schema = type | dict[str, "Schema"] | list["Schema"]
 
 
 class CalibrantFileWriter:
-    def __init__(self, datadict=None, writepath=None):
+    def __init__(
+        self,
+        datadict: dict[str, Any] | None = None,
+        writepath: str | Path | None = None,
+    ) -> None:
         self.datadict = datadict
         self.writepath = writepath
 
         # default schema for data validation. update as required.
-        schema = {
+        schema: Schema = {
             "image": np.ndarray,
             "wavelength": {"value": float, "units": str},
             "pixel_size": {"value": float, "units": str},
@@ -30,7 +43,7 @@ class CalibrantFileWriter:
         }
         self.valid_data = self.data_validation(self.datadict, schema)
 
-    def data_validation(self, data, schema):
+    def data_validation(self, data: Any, schema: Schema) -> bool:
         """
         Validate that we have all the necessary data in the input dictionary
 
@@ -57,15 +70,12 @@ class CalibrantFileWriter:
                 return False
             return all(self.data_validation(data[k], schema[k]) for k in schema)
 
-        # If schema is a list, assume homogeneous list
-        if isinstance(schema, list):
-            if len(schema) != 1:
-                raise ValueError("Schema list must have one element")
-            if not isinstance(data, (list, tuple)):
-                return False
-            return all(self.data_validation(item, schema[0]) for item in data)
-
-        return False
+        # otherwise schema is a list: assume a homogeneous list
+        if len(schema) != 1:
+            raise ValueError("Schema list must have one element")
+        if not isinstance(data, (list, tuple)):
+            return False
+        return all(self.data_validation(item, schema[0]) for item in data)
 
     # def sanitise_units(self):
     #     # TODO complete this and implement it in writer()
@@ -76,19 +86,20 @@ class CalibrantFileWriter:
     #         "prop": {"angstrom": {"m": 1e10, "nm": 10}, "nm": {"angstrom"}}
     #     }
 
-    def writer(self):
+    def writer(self) -> None:
         """
         Function to write a calibration NeXuS file
         """
 
         if not self.valid_data:
             raise NeXusError("Don't have all the data we need, won't write a file")
+        assert self.datadict is not None
 
-        detector_image = self.datadict.get("image")
-        wavelength = self.datadict.get("wavelength")
-        beam_center = self.datadict.get("beam_center")
-        pixel_size = self.datadict.get("pixel_size")
-        detector_distance = self.datadict.get("detector_distance")
+        detector_image = self.datadict["image"]
+        wavelength = self.datadict["wavelength"]
+        beam_center = self.datadict["beam_center"]
+        pixel_size = self.datadict["pixel_size"]
+        detector_distance = self.datadict["detector_distance"]
         detector_vector = np.array(
             [beam_center.get("x"), beam_center.get("y"), detector_distance.get("value")]
         )

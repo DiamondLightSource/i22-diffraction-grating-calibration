@@ -11,7 +11,7 @@ from gratingcalibration.data_loader import DataLoader
 from gratingcalibration.detector_calibration import DetectorCalibration
 
 
-def save_all_figures(output_dir):
+def save_all_figures(output_dir: Path) -> None:
     """
     save all figures that have been generated along the way in the output directory
     """
@@ -21,7 +21,7 @@ def save_all_figures(output_dir):
         fig.savefig(output_dir / f"{label}.png", dpi=200, bbox_inches="tight")
 
 
-def main():
+def main() -> None:
 
     parser = argparse.ArgumentParser(
         description="Calibration for a diffraction grating"
@@ -93,8 +93,8 @@ def main():
 
     cropped = z_corr[d:c, a:b]
     cropped_center = {
-        "x": beamstop_center.get("x") - a,
-        "y": beamstop_center.get("y") - d,
+        "x": beamstop_center["x"] - a,
+        "y": beamstop_center["y"] - d,
     }
 
     cropped_mask = mask[d:c, a:b]
@@ -112,7 +112,7 @@ def main():
     fitter.optimise_direction = "y"
     fitter.fit_beam_centre()
 
-    fitter.plots(extent=[a, b, c, d])
+    fitter.plots(extent=(a, b, c, d))
 
     # -----------------------------------------------------------------------
     # STEP 3: calibrate detector position

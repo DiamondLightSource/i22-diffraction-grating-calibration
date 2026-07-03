@@ -1,20 +1,32 @@
+from typing import Any, cast
+
 import matplotlib.pyplot as plt
 import numpy as np
 from lmfit import Model
 from matplotlib.patches import Circle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from numpy.typing import NDArray
 from scipy.special import erf
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
 
 class FitBeamstop:
-    def __init__(self, image, plot=False):
+    def __init__(self, image: NDArray[Any], plot: bool = False) -> None:
         self.image = image
         self.result = None
         self.beamstop_center = self.find_beamstop(plot=plot)
 
     @staticmethod
-    def soft_disk_2d(x, y, x0, y0, radius, amplitude, background, sigma):
+    def soft_disk_2d(
+        x: NDArray[Any],
+        y: NDArray[Any],
+        x0: float,
+        y0: float,
+        radius: float,
+        amplitude: float,
+        background: float,
+        sigma: float,
+    ) -> NDArray[Any]:
         """
         Soft-edged bright circular disc model.
         """
@@ -22,7 +34,13 @@ class FitBeamstop:
         edge = 0.5 * (1.0 - erf((r - radius) / (np.sqrt(2) * sigma)))
         return background + amplitude * edge
 
-    def fit_bright_circle(self, image, lo_x=0, lo_y=0, radius_guess=20):
+    def fit_bright_circle(
+        self,
+        image: NDArray[Any],
+        lo_x: float = 0,
+        lo_y: float = 0,
+        radius_guess: float = 20,
+    ) -> Any:
         """
         Fit a bright approximately circular region in a cropped image, but return
         the fitted centre in the coordinate system of the original full image.
@@ -123,7 +141,15 @@ class FitBeamstop:
 
         return result
 
-    def plot_circle_fit(self, image, fit_image, x0, y0, radius, extent):
+    def plot_circle_fit(
+        self,
+        image: NDArray[Any],
+        fit_image: NDArray[Any],
+        x0: float,
+        y0: float,
+        radius: float,
+        extent: list[float],
+    ) -> None:
 
         residual = image - fit_image
 
@@ -210,7 +236,7 @@ class FitBeamstop:
         fig.subplots_adjust(wspace=0.1)
         fig.set_label("beamstop_fit")
 
-    def find_beamstop(self, plot=True):
+    def find_beamstop(self, plot: bool = True) -> dict[str, float]:
         """
         Find the beamstop and fit its center from a detector image
         """
@@ -258,8 +284,6 @@ class FitBeamstop:
             "y": fit_result.params["y0"].value,
         }
 
-        ny, nx = inverted.shape
-
         # Local pixel coordinates within the crop
         yy_local, xx_local = np.indices(inverted.shape)
 
@@ -267,7 +291,9 @@ class FitBeamstop:
         xx_global = xx_local + beamstop_x_min
         yy_global = yy_local + beamstop_y_min
 
-        yy, xx = np.indices(self.image.shape)
+        yy, xx = cast(
+            "tuple[NDArray[np.intp], NDArray[np.intp]]", np.indices(self.image.shape)
+        )
 
         self.beamstop_mask = self.soft_disk_2d(
             xx,

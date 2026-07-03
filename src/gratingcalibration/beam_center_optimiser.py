@@ -1,25 +1,36 @@
+from collections.abc import Callable
+from typing import Any, TypedDict
+
 import matplotlib.pyplot as plt
+import numpy as np
 from lmfit import Parameters, minimize
 from matplotlib.gridspec import GridSpec
+from numpy.typing import NDArray
 from pyFAI.integrator.azimuthal import AzimuthalIntegrator
+
+
+class IntegrationConfig(TypedDict):
+    npt: int
+    azimuth_range: tuple[float, float]
+    radial_range: tuple[float, float]
 
 
 class BeamCenterOptimiser:
     def __init__(
         self,
-        image,
-        mask,
-        beam_energy,
-        beamstop_center,
-        optimise_direction="x",
-        offset=None,
-    ):
+        image: NDArray[Any],
+        mask: NDArray[Any],
+        beam_energy: float,
+        beamstop_center: dict[str, float],
+        optimise_direction: str = "x",
+        offset: dict[str, float] | None = None,
+    ) -> None:
         # some constants for the integration
         self.PILATUS2M_PIXEL_SIZE = 172e-6
         integration_range = 4
         # TODO work out how to configure the radial ranges ahead of time
         # and work out how to expose them?
-        self.INTEGRATION_CONFIGS = {
+        self.INTEGRATION_CONFIGS: dict[str, IntegrationConfig] = {
             "y0": {
                 "npt": 50,
                 "azimuth_range": (90 - integration_range, 90 + integration_range),
@@ -63,7 +74,7 @@ class BeamCenterOptimiser:
             wavelength=self.wavelength,
         )
         # results store to be used during optimisation
-        self._results_store = {}
+        self._results_store: dict[str, NDArray[np.float64]] = {}
 
         self._optimise_direction = optimise_direction  # can only be x or y
 
@@ -71,17 +82,17 @@ class BeamCenterOptimiser:
         self.offset = offset
 
         # where we'll store the results of the optimsed beam center
-        self.beam_center = {}
-        self.beam_center_global = {}
-        self.profiles = {}
-        self.target_configs = None
+        self.beam_center: dict[str, float] = {}
+        self.beam_center_global: dict[str, float] = {}
+        self.profiles: dict[str, dict[str, Any]] = {}
+        self.target_configs: dict[str, IntegrationConfig] | None = None
 
     @property
-    def optimise_direction(self):
+    def optimise_direction(self) -> str:
         return self._optimise_direction
 
     @optimise_direction.setter
-    def optimise_direction(self, new_value):
+    def optimise_direction(self, new_value: str) -> None:
         """
         set whether we're optimising in x or y. Assert that these are the only
         valid directions.
@@ -90,14 +101,14 @@ class BeamCenterOptimiser:
             raise ValueError("Optimise direction must be 'x' or 'y'")
         self._optimise_direction = new_value
 
-    def _setup(self):
+    def _setup(self) -> None:
         """
         fix x or y depending on whether we're optimising y or x respectively,
         and set up the target configurations for where we'll do the integration.
         """
         if self.optimise_direction == "x":
             # fix y
-            self.ai.poni1 = self.beamstop_center.get("y") * self.PILATUS2M_PIXEL_SIZE
+            self.ai.poni1 = self.beamstop_center["y"] * self.PILATUS2M_PIXEL_SIZE
             self.target_configs = {
                 key: value
                 for key, value in self.INTEGRATION_CONFIGS.items()
@@ -105,14 +116,14 @@ class BeamCenterOptimiser:
             }
         elif self.optimise_direction == "y":
             # fix x
-            self.ai.poni2 = self.beamstop_center.get("x") * self.PILATUS2M_PIXEL_SIZE
+            self.ai.poni2 = self.beamstop_center["x"] * self.PILATUS2M_PIXEL_SIZE
             self.target_configs = {
                 key: value
                 for key, value in self.INTEGRATION_CONFIGS.items()
                 if "y" in key
             }
 
-    def calculate_wavelength(self, beam_energy):
+    def calculate_wavelength(self, beam_energy: float) -> float:
         """
         calculate the wavelength from the beam energy. assumes energy in keV
         """
@@ -123,7 +134,7 @@ class BeamCenterOptimiser:
         self.wavelength_units = "m"
         return wavelength
 
-    def _finalise_residual(self, q):
+    def _finalise_residual(self, q: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         generate the correct residual from the results store depending
         on whether we're optimising x or y
@@ -134,7 +145,7 @@ class BeamCenterOptimiser:
             self.profiles["x"] = {"q": q, "Ix0": ix0, "Ix1": ix1}
             return ix1 - ix0
 
-        elif self.optimise_direction == "y":
+        else:
             self.profiles["y"] = {
                 "q": q,
                 "Iy0": self._results_store["Iy0"],
@@ -142,7 +153,7 @@ class BeamCenterOptimiser:
             }
             return self._results_store["Iy1"] - self._results_store["Iy0"]
 
-    def _set_new_center(self, pos):
+    def _set_new_center(self, pos: float) -> None:
         """
         set the new center of integration depending on the target optimiser
         """
@@ -151,25 +162,34 @@ class BeamCenterOptimiser:
         elif self.optimise_direction == "y":
             self.ai.poni1 = pos * self.PILATUS2M_PIXEL_SIZE
 
-    def _make_beam_residual(self):
+    def _make_beam_residual(self) -> Callable[..., NDArray[np.float64]]:
         """
         the main optimisation function to target for minimization.
         """
 
-        def residual(pars, **kws):
+        def residual(pars: Any, **kws: Any) -> NDArray[np.float64]:
+            assert self.target_configs is not None
+
             pos = pars["beam_center_pos"]
             self._set_new_center(pos)
 
+            q: NDArray[np.float64] | None = None
             for key, kw in self.target_configs.items():
                 q, intensity = self.ai.integrate1d(
-                    self.image, mask=self.mask, unit="r_m", **kw
+                    self.image,
+                    mask=self.mask,
+                    unit="r_m",
+                    npt=kw["npt"],
+                    azimuth_range=kw["azimuth_range"],
+                    radial_range=kw["radial_range"],
                 )
                 self._results_store[f"I{key}"] = intensity
+            assert q is not None
             return self._finalise_residual(q=q)
 
         return residual
 
-    def fit_beam_centre(self):
+    def fit_beam_centre(self) -> None:
         """
         beam center fitting function. set up and run the minimization routine.
         """
@@ -183,12 +203,12 @@ class BeamCenterOptimiser:
         params = Parameters()
         params.add(
             "beam_center_pos",
-            value=self.beamstop_center.get(self.optimise_direction),
-            min=self.beamstop_center.get(self.optimise_direction) - 2,
-            max=self.beamstop_center.get(self.optimise_direction) + 2,
+            value=self.beamstop_center[self.optimise_direction],
+            min=self.beamstop_center[self.optimise_direction] - 2,
+            max=self.beamstop_center[self.optimise_direction] + 2,
         )
 
-        result = minimize(
+        result: Any = minimize(
             residual,
             params,
             method="leastsq",
@@ -202,15 +222,15 @@ class BeamCenterOptimiser:
             # TODO: DOUBLE CHECK THIS
             self.beam_center_global[self.optimise_direction] = (
                 result.params["beam_center_pos"].value
-                + self.offset.get(self.optimise_direction)
+                + self.offset[self.optimise_direction]
                 - 0.5
             )
 
-    def plots(self, extent):
+    def plots(self, extent: tuple[float, float, float, float]) -> None:
         self.profile_plotter()
         self.center_plotter(extent)
 
-    def profile_plotter(self):
+    def profile_plotter(self) -> None:
         """
         plot the dual profiles that have been matched and the difference
         """
@@ -238,21 +258,21 @@ class BeamCenterOptimiser:
                 for key, colour in zip(
                     profile_keys, ["#4C9C88", "#9C5F4C"], strict=True
                 ):
-                    main.plot(data.get("q"), data.get(key), label=key, c=colour, lw=2)
+                    main.plot(data["q"], data[key], label=key, c=colour, lw=2)
                     main.set_title(profile_direction)
-                    profiles.append(data.get(key))
+                    profiles.append(data[key])
 
                 main.legend()
                 main.set_xticklabels([])
 
                 profile_diff = profiles[1] - profiles[0]
-                residual.plot(data.get("q"), profile_diff, c="#332A31")
+                residual.plot(data["q"], profile_diff, c="#332A31")
                 residual.set_xlabel(
                     f"Detector distance (m)\n(sos = {sum(profile_diff**2):.2f})",
                     fontsize=15,
                 )
 
-    def center_plotter(self, extent):
+    def center_plotter(self, extent: tuple[float, float, float, float]) -> None:
 
         fig, ax = plt.subplots()
         fig.set_label("beam_center_location")
@@ -269,13 +289,13 @@ class BeamCenterOptimiser:
         )
 
         ax.axvline(
-            self.beam_center.get("x") + extent[0],
+            self.beam_center["x"] + extent[0],
             c="#ff028d",
             ls=":",
             lw=1,
             label="Centre of beam",
         )
-        ax.axhline(self.beam_center.get("y") + extent[3], c="#ff028d", ls=":", lw=1)
+        ax.axhline(self.beam_center["y"] + extent[3], c="#ff028d", ls=":", lw=1)
 
         ax.legend(
             fontsize=5,
@@ -284,7 +304,9 @@ class BeamCenterOptimiser:
             bbox_transform=ax.transAxes,
         )
 
-    def tracker(self, params, iter, resid, *args, **kws):
+    def tracker(
+        self, params: Any, iter: int, resid: Any, *args: Any, **kws: Any
+    ) -> None:
         itervalues = kws["itervalues"]
         itervalues["residuals"].append(resid.copy())
         itervalues["params"].append(list(params.valuesdict().values()))

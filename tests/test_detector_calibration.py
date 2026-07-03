@@ -1,5 +1,10 @@
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from gratingcalibration.data_loader import DataLoader
 from gratingcalibration.detector_calibration import (
@@ -7,7 +12,7 @@ from gratingcalibration.detector_calibration import (
     find_multiple_sequence,
 )
 
-from .helper_functions import make_fake_file, make_fit_store
+from .helper_functions import make_fit_store
 
 
 @pytest.mark.parametrize(
@@ -21,7 +26,13 @@ from .helper_functions import make_fake_file, make_fit_store
         (100, 100, (100, 200, 300, 400, 500, 600, 700, 820), 150),
     ),
 )
-def test_radial_range(make_fake_file, cx, cy, spots, radius):
+def test_radial_range(
+    make_fake_file: Callable[..., Path],
+    cx: int,
+    cy: int,
+    spots: tuple[int, ...],
+    radius: int,
+) -> None:
     """
     test that we pick up the radial range correctly
     """
@@ -42,7 +53,7 @@ def test_radial_range(make_fake_file, cx, cy, spots, radius):
         wavelength=1e-10,  # this doesn't actually matter
     )
 
-    lims = dc._determine_radial_range()
+    lims = dc._determine_radial_range()  # pyright: ignore[reportPrivateUsage]
     lower, upper = [i / dc.PILATUS2M_PIXEL_SIZE for i in lims]
 
     print(lower, radius)
@@ -68,7 +79,7 @@ def test_radial_range(make_fake_file, cx, cy, spots, radius):
         (np.array([0, 1, 2, 4, 5, 6]), np.array([0, 1, 2, 4, 5, 6])),
     ),
 )
-def test_find_multiple_sequence(input, output):
+def test_find_multiple_sequence(input: NDArray[Any], output: NDArray[Any]) -> None:
     """
     test that sequences get identified correctly
     """
@@ -78,7 +89,11 @@ def test_find_multiple_sequence(input, output):
 
 
 @pytest.mark.parametrize("npt, radial_range", (((500, None), (250, (0.005, 0.01)))))
-def test_azi_integration(make_fake_file, npt, radial_range):
+def test_azi_integration(
+    make_fake_file: Callable[..., Path],
+    npt: int,
+    radial_range: tuple[float, float] | None,
+) -> None:
     """
     test that we pick up the radial range correctly
     """
@@ -110,7 +125,7 @@ def test_azi_integration(make_fake_file, npt, radial_range):
         )
 
 
-def test_detector_distance():
+def test_detector_distance() -> None:
     dc = DetectorCalibration(
         image=None,
         beam_center=None,
@@ -121,4 +136,5 @@ def test_detector_distance():
     dc.peaks = np.array([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]).T
 
     dc.calculate_detector_distance()
+    assert dc.detector_distance is not None
     assert np.isclose(dc.detector_distance, 1)

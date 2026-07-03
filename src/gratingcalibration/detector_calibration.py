@@ -1,13 +1,21 @@
+from typing import Any
+
 import matplotlib.pyplot as plt
 import numpy as np
 from lmfit.models import LinearModel, VoigtModel
 from matplotlib.gridspec import GridSpec
+from numpy.typing import NDArray
 from pyFAI.integrator.azimuthal import AzimuthalIntegrator
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 
 
-def find_multiple_sequence(peak_dict, max_k=10, tol=0.05, max_multiple=20):
+def find_multiple_sequence(
+    peak_dict: dict[Any, dict[str, Any]],
+    max_k: int = 10,
+    tol: float = 0.05,
+    max_multiple: int = 20,
+) -> dict[Any, dict[str, Any]]:
 
     peaks = [i["center"] for i in peak_dict.values()]
 
@@ -74,13 +82,13 @@ def find_multiple_sequence(peak_dict, max_k=10, tol=0.05, max_multiple=20):
 class DetectorCalibration:
     def __init__(
         self,
-        image,
-        beam_center,
-        wavelength,
-        peak_prominance=0.1,
-        grating_spacing=100e-9,
-        angle_region=1,
-    ):
+        image: NDArray[Any] | None,
+        beam_center: dict[str, float] | None,
+        wavelength: float,
+        peak_prominance: float = 0.1,
+        grating_spacing: float = 100e-9,
+        angle_region: float = 1,
+    ) -> None:
 
         self.image = image
         self.beam_center = beam_center
@@ -90,11 +98,11 @@ class DetectorCalibration:
         self.angle_region = angle_region
         self.PILATUS2M_PIXEL_SIZE = 172e-6  # TODO move away from ~ hard coding this
 
-        self.peaks = None
-        self.fit_data = None
-        self.detector_distance = None
+        self.peaks: NDArray[np.float64] | None = None
+        self.fit_data: dict[Any, dict[str, Any]] | None = None
+        self.detector_distance: float | None = None
 
-    def _determine_radial_range(self):
+    def _determine_radial_range(self) -> tuple[float, float]:
         """
         determine an approximate radial range for integration.
 
@@ -104,6 +112,8 @@ class DetectorCalibration:
         Then use some basic signal processing to find the lower and
         upper limits for a radial integration range
         """
+        assert self.image is not None
+        assert self.beam_center is not None
 
         avg = self.image[
             int(self.beam_center["y"]) :,
@@ -140,9 +150,11 @@ class DetectorCalibration:
         # ax[0].axvline(x[:cut-10][descending][0])
         # plt.show()
 
-        return (lower, upper)
+        return (float(lower), float(upper))
 
-    def make_signal(self, npt=500, auto_radial=None):
+    def make_signal(
+        self, npt: int = 500, auto_radial: tuple[float, float] | None = None
+    ) -> NDArray[np.float64]:
         """
         perform the azimuthal integration of the detector image.
         The radial range of the integration is determined by the _determine_radial_range
@@ -151,6 +163,8 @@ class DetectorCalibration:
         npt: int
             number of points to integrate with in the radial range.
         """
+        assert self.image is not None
+        assert self.beam_center is not None
 
         ai = AzimuthalIntegrator(
             poni1=self.beam_center["y"] * self.PILATUS2M_PIXEL_SIZE,
@@ -174,7 +188,7 @@ class DetectorCalibration:
 
         return np.array([q, intensity])
 
-    def peak_fitter(self):
+    def peak_fitter(self) -> NDArray[np.float64]:
 
         self.profile = self.make_signal()
         q, intensity = self.profile
@@ -182,7 +196,7 @@ class DetectorCalibration:
         # find what we think are the peaks
         peaks, _ = find_peaks(intensity, prominence=self.peak_prominance)
         # fit all the peaks using a Voigt peak + a linear background
-        fit_store = {}
+        fit_store: dict[Any, dict[str, Any]] = {}
         for idx, p in enumerate(peaks):
             peak_mod = VoigtModel(prefix="p_")
             line_mod = LinearModel(prefix="lin_")
@@ -224,7 +238,7 @@ class DetectorCalibration:
         self.fit_data = final_fit_store
         return peaks
 
-    def calculate_detector_distance(self):
+    def calculate_detector_distance(self) -> None:
         if self.peaks is None:
             self.peaks = self.peak_fitter()
 
@@ -237,7 +251,9 @@ class DetectorCalibration:
         self.detector_distance = fringe_spacing * self.grating_spacing / self.wavelength
         self.detector_distance_units = "m"
 
-    def plots(self):
+    def plots(self) -> None:
+        assert self.peaks is not None
+        assert self.fit_data is not None
 
         required_peaks = self.peaks[:, 0]
 
@@ -251,6 +267,7 @@ class DetectorCalibration:
         ax_top.plot(self.profile[0], self.profile[1], marker=".", c="#262626")
 
         # --- Remaining rows: normal grid ---
+        idx, ax = -1, ax_top
         for idx, key in enumerate(required_peaks):
             row = 1 + (idx // ncols)  # shift by 1 because row 0 is occupied
             col = idx % ncols
@@ -303,7 +320,7 @@ class DetectorCalibration:
         lin_res = lin.fit(self.peaks[:, 1], lin_pars, x=self.peaks[:, 0])
         ax_final.plot(
             np.arange(0, self.peaks[:, 0][-1] + 2),
-            lin_res.eval(x=np.arange(0, self.peaks[:, 0][-1] + 2)),
+            np.asarray(lin_res.eval(x=np.arange(0, self.peaks[:, 0][-1] + 2))),
             c="#262626",
             ls="--",
         )

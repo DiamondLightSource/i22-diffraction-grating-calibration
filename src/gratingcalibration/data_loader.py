@@ -1,4 +1,8 @@
+from pathlib import Path
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 from nexusformat.nexus import NeXusError, nxload
 
 
@@ -9,10 +13,10 @@ class DataLoader:
 
     def __init__(
         self,
-        filepath,
-        datapath="entry1/detector/data",
-        energypath="entry1/instrument/monochromator/energy",
-    ):
+        filepath: str | Path,
+        datapath: str = "entry1/detector/data",
+        energypath: str = "entry1/instrument/monochromator/energy",
+    ) -> None:
         """
         filepath: str
             path to file to load as nexus file
@@ -22,12 +26,14 @@ class DataLoader:
             entry in the nexus file containing the beam energy
         """
         self.filepath = filepath
-        self.file = nxload(self.filepath, "r")
+        # nexusformat exposes its tree purely via dynamic attribute/item
+        # access, so there is no way to give it a more precise static type.
+        self.file: Any = nxload(self.filepath, "r")
         self.data = self.get_detector_image(datapath)
         self.energy = self.get_beam_energy(energypath=energypath)
         self.mask = self.make_mask()
 
-    def get_detector_image(self, datapath):
+    def get_detector_image(self, datapath: str) -> npt.NDArray[np.float32]:
         """
         locate the detector image in the nexus file
         """
@@ -50,7 +56,7 @@ class DataLoader:
         data = np.ascontiguousarray(z_corr, dtype=np.float32)
         return data
 
-    def get_beam_energy(self, energypath):
+    def get_beam_energy(self, energypath: str) -> float:
         """
         get the beam energy in ev from the nexus file
         """
@@ -67,7 +73,7 @@ class DataLoader:
             multiplier = 1e3  # i.e. convert to ev
         return energy_entry.nxvalue * multiplier
 
-    def make_mask(self, threshold=0.5):
+    def make_mask(self, threshold: float = 0.5) -> npt.NDArray[np.intp]:
         """
         some kind of detector mask for integration later.
         Where data is < threshold, mask = 10, otherwise 0.

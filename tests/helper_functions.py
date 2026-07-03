@@ -1,36 +1,51 @@
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pytest
 from nexusformat.nexus import (
-    NXdetector,
+    NXdetector,  # pyright: ignore[reportAttributeAccessIssue]
     NXentry,
     NXfield,
-    NXinstrument,
-    NXmonochromator,
+    NXinstrument,  # pyright: ignore[reportAttributeAccessIssue]
+    NXmonochromator,  # pyright: ignore[reportAttributeAccessIssue]
     NXroot,
 )
+from numpy.typing import NDArray
 
 
 @pytest.fixture(scope="session")
-def make_fake_file(tmp_path_factory):
+def make_fake_file(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Callable[..., Path]:
     """
     write a tmp file with some fake detector data
     """
     base_dir = tmp_path_factory.mktemp("data")
-    cache = {}
+    cache: dict[tuple[Any, ...], Path] = {}
 
-    def add_spot(xx, yy, cx, cy, w, r, intensity):
+    def add_spot(
+        xx: NDArray[Any],
+        yy: NDArray[Any],
+        cx: float,
+        cy: float,
+        w: float,
+        r: float,
+        intensity: float,
+    ) -> NDArray[Any]:
         dist = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
         return intensity * (1 - np.tanh((dist - r) / w))
 
     def _make_fake_file(
-        cx=700,
-        cy=200,
-        r=50.0,
-        spot_rows=(100, 200, 300, 400, 500, 600, 700, 820),
-        background_intensity=10.0,
-        spot_intensity=5.0,
-        detector_shape=(1679, 1475),
-        detector_mask=(
+        cx: int = 700,
+        cy: int = 200,
+        r: float = 50.0,
+        spot_rows: tuple[int, ...] = (100, 200, 300, 400, 500, 600, 700, 820),
+        background_intensity: float = 10.0,
+        spot_intensity: float = 5.0,
+        detector_shape: tuple[int, int] = (1679, 1475),
+        detector_mask: tuple[tuple[int, int], ...] = (
             (225, 275),
             (425, 475),
             (725, 775),
@@ -38,7 +53,7 @@ def make_fake_file(tmp_path_factory):
             (1225, 1275),
             (1425, 1475),
         ),
-    ):
+    ) -> Path:
         # --- cache key ---
         key = (
             cx,
@@ -100,7 +115,7 @@ def make_fake_file(tmp_path_factory):
     return _make_fake_file
 
 
-def make_fit_store(sequence):
+def make_fit_store(sequence: NDArray[Any]) -> dict[Any, dict[str, Any]]:
     """
     From sequence, generate a dictionary of data
 
@@ -117,7 +132,7 @@ def make_fit_store(sequence):
 
     """
 
-    out = {}
+    out: dict[Any, dict[str, Any]] = {}
     for i in sequence:
         # make some data around the sequence index
         data = np.linspace(i - 0.5, i + 0.5, 100)

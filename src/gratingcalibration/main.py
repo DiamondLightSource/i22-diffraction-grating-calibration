@@ -1,9 +1,11 @@
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from gratingcalibration import __version__
 from gratingcalibration.beam_center_optimiser import BeamCenterOptimiser
 from gratingcalibration.beamstop_fitter import FitBeamstop
 from gratingcalibration.calibrant_file_writer import CalibrantFileWriter
@@ -21,10 +23,16 @@ def save_all_figures(output_dir: Path) -> None:
         fig.savefig(output_dir / f"{label}.png", dpi=200, bbox_inches="tight")
 
 
-def main() -> None:
+def main(args: Sequence[str] | None = None) -> None:
 
     parser = argparse.ArgumentParser(
         description="Calibration for a diffraction grating"
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=__version__,
     )
     parser.add_argument(
         "--file", type=Path, default=None, dest="input", help="Path to input nexus file"
@@ -52,13 +60,13 @@ def main() -> None:
         help="Save the plots generated as part of the calibration",
     )
 
-    args = parser.parse_args()
+    parsed_args = parser.parse_args(args)
 
     # -----------------------------------------------------------------------
     # STEP 0: load the data
     # -----------------------------------------------------------------------
 
-    file_in = args.input
+    file_in = parsed_args.input
 
     if file_in is None:
         print("No input file!")
@@ -125,7 +133,7 @@ def main() -> None:
         image=z_corr,
         beam_center=fitter.beam_center_global,
         wavelength=fitter.wavelength,
-        peak_prominance=args.peak_prominance,
+        peak_prominance=parsed_args.peak_prominance,
     )
     detector_calib.calculate_detector_distance()
     detector_calib.plots()
@@ -151,7 +159,7 @@ def main() -> None:
         },
     }
 
-    out = Path(args.output)
+    out = Path(parsed_args.output)
     out.mkdir(exist_ok=True)
 
     CalibrantFileWriter(

@@ -55,6 +55,14 @@ version_file = "src/gratingcalibration/_version.py"
 [tool.pyright]
 typeCheckingMode = "strict"
 reportMissingImports = false # Ignore missing stubs in imported modules
+reportMissingTypeStubs = false # scientific deps (lmfit, pyFAI, nexusformat, sklearn...) ship no stubs
+# These deps have no stubs, so calls into them return Unknown; without these off
+# every value that touches lmfit/pyFAI/nexusformat/sklearn would need a manual
+# annotation to silence "Unknown" propagation from code we don't control.
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
 
 [tool.pytest.ini_options]
 # Run pytest with all our checkers, and don't spam us with massive tracebacks on error

@@ -50,10 +50,19 @@ class BeamCenterOptimiser:
         optimise_direction: str = "x",
         offset: dict[str, float] | None = None,
         azimuth_offset: float = 0.0,
+        integration_range: float = 20,
     ) -> None:
         # some constants for the integration
         self.PILATUS2M_PIXEL_SIZE = 172e-6
-        self.integration_range = 4
+        # half-width (degrees) of each integration sector. A narrow sector
+        # (e.g. a few degrees) is very sensitive to any thin, localised
+        # angular artefact close to the beamstop - e.g. its support arm's
+        # shadow - since that can dominate a small sector without being
+        # averaged out. Widening the sector trades a little azimuthal
+        # resolution for substantially better noise/artefact rejection: the
+        # underlying halo shape being matched is symmetric over a much wider
+        # angular range than the width of such artefacts.
+        self.integration_range = integration_range
         # azimuth_offset lets the four integration sectors below be rotated to
         # follow the grating pattern when it isn't perfectly aligned with the
         # detector's vertical/horizontal axes (see determine_pattern_angle in

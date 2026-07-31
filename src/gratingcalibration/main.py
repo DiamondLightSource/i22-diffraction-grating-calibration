@@ -140,7 +140,7 @@ def main(args: Sequence[str] | None = None) -> None:
 
     print(
         f"Detector located at {detector_calib.detector_distance:.5f} "
-        "{detector_calib.detector_distance_units}. "
+        f"{detector_calib.detector_distance_units}. "
         "Writing calibration file."
     )
 

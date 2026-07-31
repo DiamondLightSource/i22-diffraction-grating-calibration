@@ -12,6 +12,16 @@ from scipy.signal import find_peaks
 from gratingcalibration.beam_center_optimiser import split_azimuth_window
 
 
+def robust_noise_floor(intensity: NDArray[np.float64]) -> float:
+    """
+    a robust (outlier-insensitive) estimate of the point-to-point noise level
+    of an intensity profile, used to judge whether a candidate peak is likely
+    a real feature rather than a noise fluctuation.
+    """
+    diffs = np.diff(intensity)
+    return float(1.4826 * np.median(np.abs(diffs - np.median(diffs))))
+
+
 def find_multiple_sequence(
     peak_dict: dict[Any, dict[str, Any]],
     max_k: int = 10,
@@ -171,52 +181,44 @@ def find_calibration_azimuth(
             image, beam_center, pixel_size, wavelength=wavelength, mask=mask
         )
 
-    ai = AzimuthalIntegrator(
-        poni1=beam_center["y"] * pixel_size,
-        poni2=beam_center["x"] * pixel_size,
-        pixel1=pixel_size,
-        pixel2=pixel_size,
-        wavelength=wavelength,
-    )
-
-    ny, nx = image.shape
-
-    def max_radius(azimuth_center: float) -> float:
-        # how far the detector extends in whichever cardinal direction is
-        # nearest this azimuth - the useful radial range for probing a given
-        # direction depends on which way it points, since the beam centre is
-        # not usually equidistant from all four detector edges.
-        azimuth = azimuth_center % 360
-        edges = {
-            0: nx - beam_center["x"],
-            90: ny - beam_center["y"],
-            180: beam_center["x"],
-            270: beam_center["y"],
-        }
-        nearest = min(
-            edges, key=lambda deg: min(abs(azimuth - deg), 360 - abs(azimuth - deg))
-        )
-        return edges[nearest] * pixel_size
-
-    def strength(azimuth_center: float) -> float:
-        radial_range = (0.01, max(0.02, 0.9 * max_radius(azimuth_center)))
-        total = 0.0
-        for window in split_azimuth_window(azimuth_center, angle_region):
-            _, intensity = ai.integrate1d(
-                image,
-                npt=1000,
-                azimuth_range=window,
-                radial_range=radial_range,
-                unit="r_m",
+    def n_confirmed_orders(azimuth_center: float) -> int:
+        # Check how many of the candidate peaks down this direction form a
+        # confidently indexed, self-consistent sequence of grating orders.
+        # This is a much more reliable test of "is this the calibration
+        # direction" than comparing raw peak prominence, since a handful of
+        # noise fluctuations can easily be locally more prominent than
+        # genuine but weak fringes without ever forming a real evenly-spaced
+        # sequence. It deliberately skips the expensive per-peak Voigt fit
+        # that the real peak_fitter does (this only needs to pick a
+        # direction, not produce final peak positions), so it stays cheap
+        # even though it's evaluated for both candidate directions.
+        try:
+            probe = DetectorCalibration(
+                image=image,
+                beam_center=beam_center,
+                wavelength=wavelength,
                 mask=mask,
-                method="csr",
+                azimuth_center=azimuth_center,
+                angle_region=angle_region,
             )
-            _, props = find_peaks(intensity, prominence=0.3)
-            total += props["prominences"].sum()
-        return total
+            q, intensity = probe.make_signal()
+            peaks, props = find_peaks(intensity, prominence=probe.peak_prominance)
+            noise_floor = robust_noise_floor(intensity)
+            if noise_floor <= 0:
+                return 0
+            snr = props["prominences"] / noise_floor
+            strong_peaks = peaks[snr > probe.min_peak_snr]
+            if strong_peaks.size < 2:
+                return 0
+            candidate_peaks = {
+                i: {"center": q[p]} for i, p in enumerate(strong_peaks)
+            }
+            return len(find_multiple_sequence(candidate_peaks))
+        except Exception:
+            return 0
 
     candidates = (90 + theta, theta)
-    return max(candidates, key=strength)
+    return max(candidates, key=n_confirmed_orders)
 
 
 class DetectorCalibration:
@@ -441,12 +443,15 @@ class DetectorCalibration:
         # versa). Instead, additionally require each peak's prominence to be
         # a healthy multiple of the profile's own point-to-point noise level,
         # estimated robustly (so it isn't thrown off by the peaks themselves).
-        noise_floor = 1.4826 * np.median(
-            np.abs(np.diff(intensity) - np.median(np.diff(intensity)))
-        )
+        noise_floor = robust_noise_floor(intensity)
         if noise_floor > 0:
             snr = props["prominences"] / noise_floor
             peaks = peaks[snr > self.min_peak_snr]
+        else:
+            # can't estimate a sensible noise floor (e.g. the profile is
+            # mostly flat/masked in this direction): don't trust any of the
+            # candidate peaks rather than let them all through unfiltered.
+            peaks = peaks[:0]
 
         # fit all the peaks using a Voigt peak + a linear background
         fit_store: dict[Any, dict[str, Any]] = {}
@@ -512,7 +517,7 @@ class DetectorCalibration:
 
         ncols = 3
         # len(required_peaks)+1 because we want to plot the indexing as a bonus
-        nrows = np.ceil((len(required_peaks) + 1) / (ncols - 1)).astype(int)
+        nrows = 1 + np.ceil((len(required_peaks) + 1) / ncols).astype(int)
         fig = plt.figure(figsize=(4 * ncols, 3 * nrows))
         fig.set_label("detector_calibration")
         gs = GridSpec(nrows=nrows, ncols=ncols, figure=fig)

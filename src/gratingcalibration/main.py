@@ -90,6 +90,22 @@ def main(args: Sequence[str] | None = None) -> None:
     mask = det_mask + beamstop.beamstop_mask
 
     # -----------------------------------------------------------------------
+    # STEP 1.5: work out how far the grating pattern is rotated away from the
+    # detector's vertical/horizontal axes. This only needs a rough beam
+    # position, so the coarse beamstop centre is accurate enough for it - no
+    # need to wait for the refined beam centre from step 2, which means the
+    # beam centre only has to be fitted once (with the correct rotation from
+    # the start) instead of once assuming no rotation and then again after
+    # measuring it.
+    # -----------------------------------------------------------------------
+
+    pixel_size = 172e-6
+    azimuth_offset = determine_pattern_angle(
+        z_corr, beamstop_center, pixel_size, mask=mask
+    )
+    print(f"Pattern rotation is {azimuth_offset:.3f} degrees")
+
+    # -----------------------------------------------------------------------
     # STEP 2: find the centre of the beam
     # using beamstop centre as starting point, adjust the centre of
     # azimuthal integration in y then x to minimise difference in profiles
@@ -118,30 +134,9 @@ def main(args: Sequence[str] | None = None) -> None:
         beamstop_center=cropped_center,
         optimise_direction="x",
         offset={"x": a, "y": d},
+        azimuth_offset=azimuth_offset,
     )
 
-    fitter.fit_beam_centre()
-    fitter.optimise_direction = "y"
-    fitter.fit_beam_centre()
-
-    # -----------------------------------------------------------------------
-    # STEP 2.5: work out how far the grating pattern is rotated away from the
-    # detector's vertical/horizontal axes, and refine the beam centre using
-    # integration sectors that follow that rotation instead of assuming
-    # perfect alignment.
-    # -----------------------------------------------------------------------
-
-    pixel_size = fitter.PILATUS2M_PIXEL_SIZE
-    azimuth_offset = determine_pattern_angle(
-        z_corr, fitter.beam_center_global, pixel_size, mask=mask
-    )
-
-    fitter.azimuth_offset = azimuth_offset
-    for key, config in fitter.INTEGRATION_CONFIGS.items():
-        base_angle = {"y0": 90, "y1": -90, "x0": 0, "x1": 180}[key]
-        config["center"] = base_angle + azimuth_offset
-
-    fitter.optimise_direction = "x"
     fitter.fit_beam_centre()
     fitter.optimise_direction = "y"
     fitter.fit_beam_centre()

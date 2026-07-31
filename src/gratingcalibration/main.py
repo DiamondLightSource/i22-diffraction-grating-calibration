@@ -10,7 +10,11 @@ from gratingcalibration.beam_center_optimiser import BeamCenterOptimiser
 from gratingcalibration.beamstop_fitter import FitBeamstop
 from gratingcalibration.calibrant_file_writer import CalibrantFileWriter
 from gratingcalibration.data_loader import DataLoader
-from gratingcalibration.detector_calibration import DetectorCalibration
+from gratingcalibration.detector_calibration import (
+    DetectorCalibration,
+    determine_pattern_angle,
+    find_calibration_azimuth,
+)
 
 
 def save_all_figures(output_dir: Path) -> None:
@@ -120,6 +124,28 @@ def main(args: Sequence[str] | None = None) -> None:
     fitter.optimise_direction = "y"
     fitter.fit_beam_centre()
 
+    # -----------------------------------------------------------------------
+    # STEP 2.5: work out how far the grating pattern is rotated away from the
+    # detector's vertical/horizontal axes, and refine the beam centre using
+    # integration sectors that follow that rotation instead of assuming
+    # perfect alignment.
+    # -----------------------------------------------------------------------
+
+    pixel_size = fitter.PILATUS2M_PIXEL_SIZE
+    azimuth_offset = determine_pattern_angle(
+        z_corr, fitter.beam_center_global, pixel_size, mask=mask
+    )
+
+    fitter.azimuth_offset = azimuth_offset
+    for key, config in fitter.INTEGRATION_CONFIGS.items():
+        base_angle = {"y0": 90, "y1": -90, "x0": 0, "x1": 180}[key]
+        config["center"] = base_angle + azimuth_offset
+
+    fitter.optimise_direction = "x"
+    fitter.fit_beam_centre()
+    fitter.optimise_direction = "y"
+    fitter.fit_beam_centre()
+
     fitter.plots(extent=(a, b, c, d))
 
     # -----------------------------------------------------------------------
@@ -129,11 +155,22 @@ def main(args: Sequence[str] | None = None) -> None:
     # peaks as usual.
     # -----------------------------------------------------------------------
 
+    calibration_azimuth = find_calibration_azimuth(
+        z_corr,
+        fitter.beam_center_global,
+        pixel_size,
+        wavelength=fitter.wavelength,
+        mask=mask,
+        theta=azimuth_offset,
+    )
+
     detector_calib = DetectorCalibration(
         image=z_corr,
         beam_center=fitter.beam_center_global,
         wavelength=fitter.wavelength,
         peak_prominance=parsed_args.peak_prominance,
+        mask=mask,
+        azimuth_center=calibration_azimuth,
     )
     detector_calib.calculate_detector_distance()
     detector_calib.plots()

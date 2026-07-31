@@ -11,8 +11,33 @@ from pyFAI.integrator.azimuthal import AzimuthalIntegrator
 
 class IntegrationConfig(TypedDict):
     npt: int
-    azimuth_range: tuple[float, float]
+    center: float
     radial_range: tuple[float, float]
+
+
+def wrap_azimuth(angle: float) -> float:
+    """
+    wrap an azimuthal angle (degrees) into pyFAI's expected (-180, 180] range
+    """
+    return ((angle + 180) % 360) - 180
+
+
+def split_azimuth_window(
+    center: float, half_width: float
+) -> list[tuple[float, float]]:
+    """
+    build the azimuth_range window(s) needed to cover `center` +/- `half_width`
+    degrees, wrapped into (-180, 180].
+
+    if the window straddles the +/-180 degree seam it has to be split into two
+    pieces (one either side of the seam) since pyFAI's azimuth_range doesn't
+    reliably handle a wrapped (lo > hi) range itself.
+    """
+    lo = wrap_azimuth(center - half_width)
+    hi = wrap_azimuth(center + half_width)
+    if lo <= hi:
+        return [(lo, hi)]
+    return [(lo, 180.0), (-180.0, hi)]
 
 
 class BeamCenterOptimiser:
@@ -24,36 +49,37 @@ class BeamCenterOptimiser:
         beamstop_center: dict[str, float],
         optimise_direction: str = "x",
         offset: dict[str, float] | None = None,
+        azimuth_offset: float = 0.0,
     ) -> None:
         # some constants for the integration
         self.PILATUS2M_PIXEL_SIZE = 172e-6
-        integration_range = 4
+        self.integration_range = 4
+        # azimuth_offset lets the four integration sectors below be rotated to
+        # follow the grating pattern when it isn't perfectly aligned with the
+        # detector's vertical/horizontal axes (see determine_pattern_angle in
+        # detector_calibration.py).
+        self.azimuth_offset = azimuth_offset
         # TODO work out how to configure the radial ranges ahead of time
         # and work out how to expose them?
         self.INTEGRATION_CONFIGS: dict[str, IntegrationConfig] = {
             "y0": {
                 "npt": 50,
-                "azimuth_range": (90 - integration_range, 90 + integration_range),
+                "center": 90 + azimuth_offset,
                 "radial_range": (0.005, 0.010),
             },
             "y1": {
                 "npt": 50,
-                "azimuth_range": (-90 - integration_range, -90 + integration_range),
+                "center": -90 + azimuth_offset,
                 "radial_range": (0.005, 0.010),
             },
             "x0": {
                 "npt": 50,
-                "azimuth_range": (-integration_range, integration_range),
+                "center": azimuth_offset,
                 "radial_range": (0.0023, 0.0065),
             },
-            "x1a": {
+            "x1": {
                 "npt": 50,
-                "azimuth_range": (180 - integration_range, 180),
-                "radial_range": (0.0023, 0.0065),
-            },
-            "x1b": {
-                "npt": 50,
-                "azimuth_range": (-180, -180 + integration_range),
+                "center": 180 + azimuth_offset,
                 "radial_range": (0.0023, 0.0065),
             },
         }
@@ -141,7 +167,7 @@ class BeamCenterOptimiser:
         """
         if self.optimise_direction == "x":
             ix0 = self._results_store["Ix0"]
-            ix1 = 0.5 * (self._results_store["Ix1a"] + self._results_store["Ix1b"])
+            ix1 = self._results_store["Ix1"]
             self.profiles["x"] = {"q": q, "Ix0": ix0, "Ix1": ix1}
             return ix1 - ix0
 
@@ -162,6 +188,33 @@ class BeamCenterOptimiser:
         elif self.optimise_direction == "y":
             self.ai.poni1 = pos * self.PILATUS2M_PIXEL_SIZE
 
+    def _integrate_sector(
+        self, config: IntegrationConfig
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """
+        integrate the sector described by an IntegrationConfig. When the
+        sector straddles the +/-180 degree azimuth seam this means combining
+        two pyFAI integrations (one either side of the seam); the two
+        resulting intensity profiles are averaged together since they're
+        both part of the same logical sector.
+        """
+        windows = split_azimuth_window(config["center"], self.integration_range)
+
+        q: NDArray[np.float64] | None = None
+        intensities = []
+        for window in windows:
+            q, intensity = self.ai.integrate1d(
+                self.image,
+                mask=self.mask,
+                unit="r_m",
+                npt=config["npt"],
+                azimuth_range=window,
+                radial_range=config["radial_range"],
+            )
+            intensities.append(intensity)
+        assert q is not None
+        return q, np.mean(intensities, axis=0)
+
     def _make_beam_residual(self) -> Callable[..., NDArray[np.float64]]:
         """
         the main optimisation function to target for minimization.
@@ -174,15 +227,8 @@ class BeamCenterOptimiser:
             self._set_new_center(pos)
 
             q: NDArray[np.float64] | None = None
-            for key, kw in self.target_configs.items():
-                q, intensity = self.ai.integrate1d(
-                    self.image,
-                    mask=self.mask,
-                    unit="r_m",
-                    npt=kw["npt"],
-                    azimuth_range=kw["azimuth_range"],
-                    radial_range=kw["radial_range"],
-                )
+            for key, config in self.target_configs.items():
+                q, intensity = self._integrate_sector(config)
                 self._results_store[f"I{key}"] = intensity
             assert q is not None
             return self._finalise_residual(q=q)

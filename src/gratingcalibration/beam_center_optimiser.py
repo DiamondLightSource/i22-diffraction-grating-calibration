@@ -350,10 +350,38 @@ class BeamCenterOptimiser:
         )
         ax.axhline(self.beam_center["y"] + extent[3], c="#ff028d", ls=":", lw=1)
 
+        # lines through the beam centre showing the grating pattern's two
+        # (perpendicular) fringe directions, i.e. the detector's
+        # vertical/horizontal axes rotated by azimuth_offset.
+        beam_point = (
+            self.beam_center["x"] + extent[0],
+            self.beam_center["y"] + extent[3],
+        )
+        for label, chi_deg in (
+            (
+                f"Pattern direction\n({self.azimuth_offset:.3f}°)",
+                90 + self.azimuth_offset,
+            ),
+            (None, self.azimuth_offset),
+        ):
+            chi = np.deg2rad(chi_deg)
+            direction_point = (
+                beam_point[0] + np.cos(chi),
+                beam_point[1] + np.sin(chi),
+            )
+            ax.axline(
+                beam_point,
+                direction_point,
+                c="#B72818",
+                ls=":",
+                lw=1,
+                label=label,
+            )
+
         ax.legend(
             fontsize=5,
-            loc="center right",
-            bbox_to_anchor=(1, 0.2),
+            loc="lower right",
+            bbox_to_anchor=(1, 0),
             bbox_transform=ax.transAxes,
         )
 

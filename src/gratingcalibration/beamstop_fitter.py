@@ -7,7 +7,6 @@ from matplotlib.patches import Circle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from numpy.typing import NDArray
 from scipy.special import erf
-from sklearn.cluster import MeanShift, estimate_bandwidth
 
 
 class FitBeamstop:
@@ -236,27 +235,37 @@ class FitBeamstop:
         fig.subplots_adjust(wspace=0.1)
         fig.set_label("beamstop_fit")
 
+    def _locate_beam_halo(self, min_points: int = 5) -> NDArray[np.intp]:
+        """
+        Get a coarse estimate of the beam position from the brightest pixels
+        in the image.
+
+        The beamstop itself is a dark disc, but it always sits inside the
+        brightest halo of direct/scattered beam intensity, so thresholding on
+        a high percentile of pixel intensities and taking the median position
+        of the pixels above that threshold gives a robust coarse centre
+        estimate. This does not depend on the absolute intensity scale of the
+        image (which varies a lot between datasets), and also averages out
+        cleanly even when the halo is split into two asymmetric lobes either
+        side of the beamstop (e.g. when the diffraction pattern is not well
+        aligned with the detector axes).
+        """
+        for percentile in (99.9, 99.5, 99, 95, 90):
+            threshold = np.percentile(self.image, percentile)
+            ys, xs = np.where(self.image >= threshold)
+            if ys.size >= min_points:
+                break
+        else:
+            raise RuntimeError("Could not find a bright beam halo in the image")
+
+        return np.array([np.median(ys), np.median(xs)]).astype(int)
+
     def find_beamstop(self, plot: bool = True) -> dict[str, float]:
         """
         Find the beamstop and fit its center from a detector image
         """
 
-        # find some of the most intense pixels in the dataset are
-        highest_points = np.where(
-            np.digitize(self.image, bins=np.arange(np.ceil(self.image).max()))
-            > np.ceil(self.image).max() - 4
-        )
-
-        # cluster the points to find where the spots are spaced horizontally
-        points = np.stack(highest_points).T
-        bandwidth = estimate_bandwidth(points, quantile=0.3, n_samples=500)
-        ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
-        ms.fit(points)
-        labels = ms.labels_
-
-        # biggest cluster should be around the beamstop, and have cluster label 0.
-        beamstop_cluster = points[labels == 0]
-        beamstop_cluster_mean = beamstop_cluster.mean(axis=0).astype(int)
+        beamstop_cluster_mean = self._locate_beam_halo()
 
         # set some limits in the image aroud the detector. 45 should be robust enough.
         beamstop_y_min = beamstop_cluster_mean[0] - 60

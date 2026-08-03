@@ -9,12 +9,26 @@ from pyFAI.integrator.azimuthal import AzimuthalIntegrator
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 
+from gratingcalibration.beam_center_optimiser import split_azimuth_window
+
+
+def robust_noise_floor(intensity: NDArray[np.float64]) -> float:
+    """
+    a robust (outlier-insensitive) estimate of the point-to-point noise level
+    of an intensity profile, used to judge whether a candidate peak is likely
+    a real feature rather than a noise fluctuation.
+    """
+    diffs = np.diff(intensity)
+    return float(1.4826 * np.median(np.abs(diffs - np.median(diffs))))
+
 
 def find_multiple_sequence(
     peak_dict: dict[Any, dict[str, Any]],
     max_k: int = 10,
     tol: float = 0.05,
     max_multiple: int = 20,
+    score_percentile: float = 75,
+    parsimony_band: float = 1.5,
 ) -> dict[Any, dict[str, Any]]:
 
     peaks = [i["center"] for i in peak_dict.values()]
@@ -29,8 +43,7 @@ def find_multiple_sequence(
 
     candidates = np.array(candidates)
 
-    best_f = None
-    best_score = np.inf
+    scored: list[tuple[float, float]] = []
 
     for f in candidates:
         if np.isclose(f, 0):
@@ -47,14 +60,25 @@ def find_multiple_sequence(
         denom = np.maximum(1, k_round)
         errors = np.abs(r - k_round) / denom
 
-        score = np.median(errors)
+        # a high percentile (rather than the median) of the relative errors
+        # means the score stays low only when *most* peaks are well
+        # explained, not just at least half of them.
+        score = float(np.percentile(errors, score_percentile))
+        scored.append((score, f))
 
-        if score < best_score:
-            best_score = score
-            best_f = f
-
-    if best_f is None:
+    if not scored:
         raise RuntimeError("No valid fundamental found")
+
+    # A fundamental f and any of its exact fractions (f/2, f/3, ...) explain
+    # the same peaks about equally well, just with proportionally larger
+    # indices - so picking whichever scores (even marginally) lowest is
+    # unreliable and biases towards spuriously large multiples. Instead,
+    # among all fundamentals that explain the peaks about as well as the
+    # best one, prefer the largest: the simplest indexing consistent with
+    # the data.
+    best_score = min(score for score, _ in scored)
+    band = [f for score, f in scored if score <= best_score * parsimony_band + 1e-9]
+    best_f = max(band)
 
     # Final classification
     r = peaks / best_f
@@ -79,6 +103,120 @@ def find_multiple_sequence(
     return peak_dict_out
 
 
+def determine_pattern_angle(
+    image: NDArray[Any],
+    beam_center: dict[str, float],
+    pixel_size: float,
+    wavelength: float = 1e-10,
+    mask: NDArray[Any] | None = None,
+    radial_range: tuple[float, float] = (0.0023, 0.010),
+    npt: int = 1440,
+    prominence: float = 0.3,
+) -> float:
+    """
+    Determine how far the grating pattern is rotated (in degrees, modulo 90)
+    away from being aligned with the detector's vertical/horizontal axes.
+
+    Builds an intensity-vs-azimuthal-angle ("cake") profile close to the beam
+    centre, where fringe orders from both of the grating's perpendicular
+    families are normally visible, and finds the common phase of their 4-fold
+    rotational symmetry. Averaging over all the peaks found (weighted by how
+    prominent each one is) means this works even if the pattern is only
+    visible as two asymmetric lobes either side of the beamstop, and is
+    unaffected by which of the two families happens to be the stronger one -
+    see find_calibration_azimuth for that.
+    """
+    ai = AzimuthalIntegrator(
+        poni1=beam_center["y"] * pixel_size,
+        poni2=beam_center["x"] * pixel_size,
+        pixel1=pixel_size,
+        pixel2=pixel_size,
+        wavelength=wavelength,
+    )
+    chi, intensity = ai.integrate_radial(
+        image, npt=npt, radial_range=radial_range, radial_unit="r_m", mask=mask
+    )
+    peaks, props = find_peaks(intensity, prominence=prominence)
+    if peaks.size == 0:
+        return 0.0
+
+    weights = props["prominences"]
+    phase = 4 * np.deg2rad(chi[peaks])
+    theta = (
+        np.rad2deg(
+            np.arctan2(np.sum(weights * np.sin(phase)), np.sum(weights * np.cos(phase)))
+        )
+        / 4
+    )
+    return float(theta)
+
+
+def find_calibration_azimuth(
+    image: NDArray[Any],
+    beam_center: dict[str, float],
+    pixel_size: float,
+    wavelength: float = 1e-10,
+    mask: NDArray[Any] | None = None,
+    theta: float | None = None,
+    angle_region: float = 1.0,
+) -> float:
+    """
+    Work out which azimuth angle the detector calibration should integrate
+    along.
+
+    The grating produces two fringe families at right angles to each other;
+    once the pattern's rotation (theta, modulo 90 degrees - see
+    determine_pattern_angle) is known, the family with the most/strongest
+    higher-order fringes sits at either chi = 90 + theta or chi = theta. Which
+    one that is isn't fixed: a rotation anywhere close to 90 degrees would
+    swap them over, so both are actually probed (by looking for peaks well
+    away from the beamstop, where only the "good" calibration direction still
+    has resolvable fringes) rather than assuming it's always the nominally
+    vertical one.
+    """
+    if theta is None:
+        theta = determine_pattern_angle(
+            image, beam_center, pixel_size, wavelength=wavelength, mask=mask
+        )
+
+    def n_confirmed_orders(azimuth_center: float) -> int:
+        # Check how many of the candidate peaks down this direction form a
+        # confidently indexed, self-consistent sequence of grating orders.
+        # This is a much more reliable test of "is this the calibration
+        # direction" than comparing raw peak prominence, since a handful of
+        # noise fluctuations can easily be locally more prominent than
+        # genuine but weak fringes without ever forming a real evenly-spaced
+        # sequence. It deliberately skips the expensive per-peak Voigt fit
+        # that the real peak_fitter does (this only needs to pick a
+        # direction, not produce final peak positions), so it stays cheap
+        # even though it's evaluated for both candidate directions.
+        try:
+            probe = DetectorCalibration(
+                image=image,
+                beam_center=beam_center,
+                wavelength=wavelength,
+                mask=mask,
+                azimuth_center=azimuth_center,
+                angle_region=angle_region,
+            )
+            q, intensity = probe.make_signal()
+            peaks, props = find_peaks(intensity, prominence=probe.peak_prominance)
+            noise_floor = robust_noise_floor(intensity)
+            if noise_floor <= 0:
+                return 0
+            snr = props["prominences"] / noise_floor
+            strong_peaks = peaks[snr > probe.min_peak_snr]
+            if strong_peaks.size < 2:
+                return 0
+            candidate_peaks = {i: {"center": q[p]} for i, p in enumerate(strong_peaks)}
+            return len(find_multiple_sequence(candidate_peaks))
+        except Exception:
+            return 0
+
+    candidates = (90 + theta, theta)
+    return max(candidates, key=n_confirmed_orders)
+
+
 class DetectorCalibration:
     def __init__(
         self,
@@ -88,6 +226,9 @@ class DetectorCalibration:
         peak_prominance: float = 0.1,
         grating_spacing: float = 100e-9,
         angle_region: float = 1,
+        mask: NDArray[Any] | None = None,
+        azimuth_center: float = 90.0,
+        min_peak_snr: float = 15.0,
     ) -> None:
 
         self.image = image
@@ -96,11 +237,62 @@ class DetectorCalibration:
         self.peak_prominance = peak_prominance
         self.grating_spacing = grating_spacing  # 100 nm by default
         self.angle_region = angle_region
+        self.mask = mask
+        # the azimuth angle (pyFAI convention, degrees) along which the
+        # grating fringes run. Defaults to 90 (straight down the detector);
+        # pass the value from find_calibration_azimuth when the grating
+        # pattern isn't aligned with the detector axes.
+        self.azimuth_center = azimuth_center
+        # minimum ratio of a candidate peak's prominence to the profile's own
+        # point-to-point noise level for it to be trusted as a real fringe
+        # rather than a noise fluctuation (see peak_fitter).
+        self.min_peak_snr = min_peak_snr
         self.PILATUS2M_PIXEL_SIZE = 172e-6  # TODO move away from ~ hard coding this
 
         self.peaks: NDArray[np.float64] | None = None
         self.fit_data: dict[Any, dict[str, Any]] | None = None
         self.detector_distance: float | None = None
+
+    def _scan_direction(self) -> tuple[int, int]:
+        """
+        the (dy, dx) unit step, in pixels, that most closely matches
+        self.azimuth_center, using pyFAI's convention that chi=0 points along
+        +x and chi=90 points along +y.
+        """
+        azimuth = self.azimuth_center % 360
+        cardinal_directions = {0: (0, 1), 90: (1, 0), 180: (0, -1), 270: (-1, 0)}
+        nearest = min(
+            cardinal_directions,
+            key=lambda deg: min(abs(azimuth - deg), 360 - abs(azimuth - deg)),
+        )
+        return cardinal_directions[nearest]
+
+    def _radial_scan_signal(self, half_width: int) -> NDArray[np.float64]:
+        """
+        sum a strip of the image, `half_width` pixels either side of the beam
+        centre, running away from the beam centre along whichever cardinal
+        direction (down/up/left/right) is closest to self.azimuth_center.
+        Used as a cheap 1D proxy for where the grating fringes/detector
+        dead-zones are, without doing a full azimuthal integration.
+        """
+        assert self.image is not None
+        assert self.beam_center is not None
+
+        y, x = int(self.beam_center["y"]), int(self.beam_center["x"])
+        dy, dx = self._scan_direction()
+
+        avg: NDArray[np.float64]
+        if dy == 1:
+            avg = self.image[y:, x - half_width : x + half_width].sum(axis=1)
+        elif dy == -1:
+            avg = self.image[: y + 1, x - half_width : x + half_width][::-1].sum(axis=1)
+        elif dx == 1:
+            avg = self.image[y - half_width : y + half_width, x:].sum(axis=0)
+        else:
+            avg = self.image[y - half_width : y + half_width, : x + 1][:, ::-1].sum(
+                axis=0
+            )
+        return avg
 
     def _determine_radial_range(self) -> tuple[float, float]:
         """
@@ -110,43 +302,74 @@ class DetectorCalibration:
         detector where the peaks are
 
         Then use some basic signal processing to find the lower and
-        upper limits for a radial integration range
+        upper limits for a radial integration range.
+
+        The column summed to make this 1D signal starts out narrow (a
+        handful of pixels either side of the beam centre), which is enough
+        when the grating fringes run essentially straight down the detector.
+        If that isn't enough to pick out a detector module gap (e.g. because
+        the diffraction pattern isn't well aligned with the detector's
+        vertical axis, or the signal is just noisier), the column is widened
+        and the search retried, since a wider column keeps picking up fringes
+        that have drifted sideways and averages out noise.
         """
-        assert self.image is not None
-        assert self.beam_center is not None
+        regions = np.array([], dtype=np.intp)
+        exclude = np.array([], dtype=np.intp)
+        avg = np.array([], dtype=np.float64)
 
-        avg = self.image[
-            int(self.beam_center["y"]) :,
-            int(self.beam_center["x"] - 5) : int(self.beam_center["x"] + 5),
-        ].sum(axis=1)
-        x = np.arange(len(avg))
-        # fig, ax = plt.subplots(2,1,sharex=True)
-        # ax[0].plot(x, avg)
+        for half_width in (5, 10, 20, 30, 40):
+            avg = self._radial_scan_signal(half_width)
+            x = np.arange(len(avg))
+            # fig, ax = plt.subplots(2,1,sharex=True)
+            # ax[0].plot(x, avg)
 
-        # now do the upper limit.
-        # take a moving average of the gradient of the signal.
-        # this helps us find regions where the signal is not changing very much
-        _filter = uniform_filter1d(np.gradient(avg), 10)
-        # ie where we're getting any kind of significant change in the signal gradient
-        regions = np.where(np.abs(_filter) > 1)[0]
-        # ax[1].plot(x, _filter)
-        # ax[1].scatter(x[regions], _filter[regions], s=5, c='#262626')
-        # where we have large gaps between the regions, because we're only
-        # picking up detector segment dead zones
-        exclude = np.where(np.diff(regions) > 100)[0]
+            # now do the upper limit.
+            # take a moving average of the gradient of the signal.
+            # this helps us find regions where the signal is not changing much
+            _filter = uniform_filter1d(np.gradient(avg), 10)
+            # ie where we're getting any significant change in the signal gradient
+            regions = np.where(np.abs(_filter) > 1)[0]
+            # ax[1].plot(x, _filter)
+            # ax[1].scatter(x[regions], _filter[regions], s=5, c='#262626')
+            # where we have large gaps between the regions, because we're only
+            # picking up detector segment dead zones
+            exclude = np.where(np.diff(regions) > 100)[0]
 
-        # take the index of the first point and add a bit
-        cut = x[regions][exclude[0]] + 20
+            if exclude.size > 0:
+                break
+
+        if exclude.size > 0:
+            # take the index of the first point and add a bit
+            cut = x[regions][exclude[0]] + 20
+        else:
+            # never found a detector dead-zone gap, even in the widest column:
+            # fall back to wherever the peak-containing signal itself runs out
+            cut = int(regions[-1] + 20) if regions.size > 0 else len(avg) - 1
+        cut = min(cut, len(avg) - 1)
         # convert it to detector distance
         upper = cut * self.PILATUS2M_PIXEL_SIZE
 
         # If we still have some beamstop in the signal we want to make sure we're not
         # including it as a peak.
-        # look ahead 20 points .
+        # look ahead 20 points.
         # if the average intensity 5 points ahead is higher in the first
-        # section of the signal then we're still in the beamstop region
-        descending = [j > avg[i : i + 10].mean() for i, j in enumerate(avg[: cut - 10])]
-        lower = x[: cut - 10][descending][0] * self.PILATUS2M_PIXEL_SIZE
+        # section of the signal then we're still in the beamstop region.
+        # smooth first so that noise right next to the beamstop edge doesn't
+        # get mistaken for the start of the descent.
+        smoothed = uniform_filter1d(avg, 5)
+        descending = [
+            j > smoothed[i : i + 10].mean() for i, j in enumerate(smoothed[: cut - 10])
+        ]
+        if any(descending):
+            lower = x[: cut - 10][descending][0] * self.PILATUS2M_PIXEL_SIZE
+        else:
+            # never found a descending point (e.g. the signal is still
+            # rising when the cut is reached): fall back to the brightest
+            # point before the cut, which is the edge of the beamstop
+            # shadow/halo.
+            lower = (
+                int(np.argmax(smoothed[: max(cut - 10, 1)])) * self.PILATUS2M_PIXEL_SIZE
+            )
         # ax[0].axvline(x[:cut-10][descending][0])
         # plt.show()
 
@@ -174,19 +397,31 @@ class DetectorCalibration:
             wavelength=self.wavelength,
         )
 
-        # make an I vs. q profile from a small sector around +y
-        q, intensity = ai.integrate1d(
-            self.image,
-            npt=npt,
-            azimuth_range=(90 - self.angle_region, 90 + self.angle_region),
-            radial_range=self._determine_radial_range()
-            if auto_radial is None
-            else auto_radial,
-            unit="r_m",
-            method="csr",
+        radial_range = (
+            self._determine_radial_range() if auto_radial is None else auto_radial
         )
 
-        return np.array([q, intensity])
+        # make an I vs. q profile from a small sector centred on
+        # self.azimuth_center (following the grating fringes, which run
+        # straight down the detector - chi=90 - only when the pattern is
+        # perfectly aligned with the detector axes). The sector is split in
+        # two if it straddles the +/-180 degree azimuth seam.
+        q: NDArray[np.float64] | None = None
+        intensities = []
+        for window in split_azimuth_window(self.azimuth_center, self.angle_region):
+            q, intensity = ai.integrate1d(
+                self.image,
+                npt=npt,
+                azimuth_range=window,
+                radial_range=radial_range,
+                unit="r_m",
+                method="csr",
+                mask=self.mask,
+            )
+            intensities.append(intensity)
+        assert q is not None
+
+        return np.array([q, np.mean(intensities, axis=0)])
 
     def peak_fitter(self) -> NDArray[np.float64]:
 
@@ -194,7 +429,24 @@ class DetectorCalibration:
         q, intensity = self.profile
 
         # find what we think are the peaks
-        peaks, _ = find_peaks(intensity, prominence=self.peak_prominance)
+        peaks, props = find_peaks(intensity, prominence=self.peak_prominance)
+
+        # A fixed prominence threshold doesn't adapt to how noisy a given
+        # profile is, so a genuine fringe peak in a low-signal dataset can be
+        # about as prominent as a noise fluctuation in a cleaner one (or vice
+        # versa). Instead, additionally require each peak's prominence to be
+        # a healthy multiple of the profile's own point-to-point noise level,
+        # estimated robustly (so it isn't thrown off by the peaks themselves).
+        noise_floor = robust_noise_floor(intensity)
+        if noise_floor > 0:
+            snr = props["prominences"] / noise_floor
+            peaks = peaks[snr > self.min_peak_snr]
+        else:
+            # can't estimate a sensible noise floor (e.g. the profile is
+            # mostly flat/masked in this direction): don't trust any of the
+            # candidate peaks rather than let them all through unfiltered.
+            peaks = peaks[:0]
+
         # fit all the peaks using a Voigt peak + a linear background
         fit_store: dict[Any, dict[str, Any]] = {}
         for idx, p in enumerate(peaks):
@@ -259,7 +511,7 @@ class DetectorCalibration:
 
         ncols = 3
         # len(required_peaks)+1 because we want to plot the indexing as a bonus
-        nrows = np.ceil((len(required_peaks) + 1) / (ncols - 1)).astype(int)
+        nrows = 1 + np.ceil((len(required_peaks) + 1) / ncols).astype(int)
         fig = plt.figure(figsize=(4 * ncols, 3 * nrows))
         fig.set_label("detector_calibration")
         gs = GridSpec(nrows=nrows, ncols=ncols, figure=fig)

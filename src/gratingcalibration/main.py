@@ -10,7 +10,11 @@ from gratingcalibration.beam_center_optimiser import BeamCenterOptimiser
 from gratingcalibration.beamstop_fitter import FitBeamstop
 from gratingcalibration.calibrant_file_writer import CalibrantFileWriter
 from gratingcalibration.data_loader import DataLoader
-from gratingcalibration.detector_calibration import DetectorCalibration
+from gratingcalibration.detector_calibration import (
+    DetectorCalibration,
+    determine_pattern_angle,
+    find_calibration_azimuth,
+)
 
 
 def save_all_figures(output_dir: Path) -> None:
@@ -86,6 +90,22 @@ def main(args: Sequence[str] | None = None) -> None:
     mask = det_mask + beamstop.beamstop_mask
 
     # -----------------------------------------------------------------------
+    # STEP 1.5: work out how far the grating pattern is rotated away from the
+    # detector's vertical/horizontal axes. This only needs a rough beam
+    # position, so the coarse beamstop centre is accurate enough for it - no
+    # need to wait for the refined beam centre from step 2, which means the
+    # beam centre only has to be fitted once (with the correct rotation from
+    # the start) instead of once assuming no rotation and then again after
+    # measuring it.
+    # -----------------------------------------------------------------------
+
+    pixel_size = 172e-6
+    azimuth_offset = determine_pattern_angle(
+        z_corr, beamstop_center, pixel_size, mask=mask
+    )
+    print(f"Pattern rotation is {azimuth_offset:.3f} degrees")
+
+    # -----------------------------------------------------------------------
     # STEP 2: find the centre of the beam
     # using beamstop centre as starting point, adjust the centre of
     # azimuthal integration in y then x to minimise difference in profiles
@@ -114,6 +134,7 @@ def main(args: Sequence[str] | None = None) -> None:
         beamstop_center=cropped_center,
         optimise_direction="x",
         offset={"x": a, "y": d},
+        azimuth_offset=azimuth_offset,
     )
 
     fitter.fit_beam_centre()
@@ -129,18 +150,29 @@ def main(args: Sequence[str] | None = None) -> None:
     # peaks as usual.
     # -----------------------------------------------------------------------
 
+    calibration_azimuth = find_calibration_azimuth(
+        z_corr,
+        fitter.beam_center_global,
+        pixel_size,
+        wavelength=fitter.wavelength,
+        mask=mask,
+        theta=azimuth_offset,
+    )
+
     detector_calib = DetectorCalibration(
         image=z_corr,
         beam_center=fitter.beam_center_global,
         wavelength=fitter.wavelength,
         peak_prominance=parsed_args.peak_prominance,
+        mask=mask,
+        azimuth_center=calibration_azimuth,
     )
     detector_calib.calculate_detector_distance()
     detector_calib.plots()
 
     print(
         f"Detector located at {detector_calib.detector_distance:.5f} "
-        "{detector_calib.detector_distance_units}. "
+        f"{detector_calib.detector_distance_units}. "
         "Writing calibration file."
     )
 

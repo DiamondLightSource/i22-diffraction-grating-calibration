@@ -94,7 +94,7 @@ def test_beam_center_optimiser_recovers_known_center(
     a, b, c, d = cx - 40, cx + 40, cy + 60, cy - 60
     cropped = fake_data.data[d:c, a:b]
     cropped_mask = fake_data.mask[d:c, a:b]
-    cropped_center = {"x": cx - a, "y": cy - d}
+    cropped_center = {"x": float(cx - a), "y": float(cy - d)}
 
     fitter = BeamCenterOptimiser(
         image=cropped,

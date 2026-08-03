@@ -144,9 +144,7 @@ def determine_pattern_angle(
     phase = 4 * np.deg2rad(chi[peaks])
     theta = (
         np.rad2deg(
-            np.arctan2(
-                np.sum(weights * np.sin(phase)), np.sum(weights * np.cos(phase))
-            )
+            np.arctan2(np.sum(weights * np.sin(phase)), np.sum(weights * np.cos(phase)))
         )
         / 4
     )
@@ -210,9 +208,7 @@ def find_calibration_azimuth(
             strong_peaks = peaks[snr > probe.min_peak_snr]
             if strong_peaks.size < 2:
                 return 0
-            candidate_peaks = {
-                i: {"center": q[p]} for i, p in enumerate(strong_peaks)
-            }
+            candidate_peaks = {i: {"center": q[p]} for i, p in enumerate(strong_peaks)}
             return len(find_multiple_sequence(candidate_peaks))
         except Exception:
             return 0
@@ -289,9 +285,7 @@ class DetectorCalibration:
         if dy == 1:
             avg = self.image[y:, x - half_width : x + half_width].sum(axis=1)
         elif dy == -1:
-            avg = self.image[: y + 1, x - half_width : x + half_width][::-1].sum(
-                axis=1
-            )
+            avg = self.image[: y + 1, x - half_width : x + half_width][::-1].sum(axis=1)
         elif dx == 1:
             avg = self.image[y - half_width : y + half_width, x:].sum(axis=0)
         else:

@@ -22,9 +22,7 @@ def wrap_azimuth(angle: float) -> float:
     return ((angle + 180) % 360) - 180
 
 
-def split_azimuth_window(
-    center: float, half_width: float
-) -> list[tuple[float, float]]:
+def split_azimuth_window(center: float, half_width: float) -> list[tuple[float, float]]:
     """
     build the azimuth_range window(s) needed to cover `center` +/- `half_width`
     degrees, wrapped into (-180, 180].

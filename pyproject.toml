@@ -29,7 +29,6 @@ requires-python = ">=3.11"
 
 [dependency-groups]
 dev = [
-    "copier",
     "pre-commit",
     "pyright",
     "pytest",

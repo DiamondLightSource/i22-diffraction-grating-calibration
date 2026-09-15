@@ -42,22 +42,38 @@ def main(args: Sequence[str] | None = None) -> None:
         "--file", type=Path, default=None, dest="input", help="Path to input nexus file"
     )
     parser.add_argument(
+        "--grating-spacing",
+        type=float,
+        default=100,
+        dest="grating_spacing",
+        help=("Spacing of diffraction grating in nm. Default 100.")
+    )
+    parser.add_argument(
         "--peak-prominance",
         type=float,
         default=0.1,
         dest="peak_prominance",
         help=(
-            "Peak prominance to use in scipy.signal.find_peaks when"
+            "Peak prominance to use in scipy.signal.find_peaks when "
             "finding grating fringes. Default=0.1"
         ),
     )
     parser.add_argument(
-        "--output",
+        "--output-path",
         type=Path,
         default="calibration",
-        dest="output",
+        dest="output_path",
         help="Path to where calibration file will be written",
     )
+    parser.add_argument(
+        "--outname",
+        type=str,
+        default="SAXS_calibration",
+        dest="outname",
+        help="Name of output calibration file. Defaults to 'SAXS_calibration'"
+    )
+
+
     parser.add_argument(
         "--save-plots",
         action="store_false",
@@ -166,6 +182,7 @@ def main(args: Sequence[str] | None = None) -> None:
         peak_prominance=parsed_args.peak_prominance,
         mask=mask,
         azimuth_center=calibration_azimuth,
+        grating_spacing=parsed_args.grating_spacing*1e-9 # convert to nm here. Probably a better way to do it but make do for now.
     )
     detector_calib.calculate_detector_distance()
     detector_calib.plots()
@@ -191,11 +208,13 @@ def main(args: Sequence[str] | None = None) -> None:
         },
     }
 
-    out = Path(parsed_args.output)
-    out.mkdir(exist_ok=True)
+    outpath = Path(parsed_args.output_path)
+    outpath.mkdir(exist_ok=True)
+    
+    outname = Path(parsed_args.outname).with_suffix(".nxs")
 
     CalibrantFileWriter(
-        datadict=data_out, writepath=out / "SAXS_calibration.nxs"
+        datadict=data_out, writepath=outpath / outname 
     ).writer()
 
-    save_all_figures(out)
+    save_all_figures(outpath)

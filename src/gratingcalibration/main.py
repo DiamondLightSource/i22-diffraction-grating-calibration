@@ -83,7 +83,9 @@ def main(args: Sequence[str] | None = None) -> None:
         type=Path,
         default="calibration",
         dest="output_path",
-        help="Path to where calibration file will be written",
+        help=(
+            "Path to where calibration file will be written. Defaults to 'calibration'"
+        ),
     )
     parser.add_argument(
         "--outname",
@@ -93,9 +95,10 @@ def main(args: Sequence[str] | None = None) -> None:
         help="Name of output calibration file. Defaults to 'SAXS_calibration'",
     )
     parser.add_argument(
-        "--save-plots",
-        action="store_false",
-        help="Save the plots generated as part of the calibration",
+        "--no-plots",
+        action="store_true",
+        dest="no_plots",
+        help="Don't save processing plots alongside the calibration file",
     )
 
     parsed_args = parser.parse_args(args)
@@ -235,4 +238,5 @@ def main(args: Sequence[str] | None = None) -> None:
 
     CalibrantFileWriter(datadict=data_out, writepath=outpath / outname).writer()
 
-    save_all_figures(outpath)
+    if not parsed_args.no_plots:
+        save_all_figures(outpath)

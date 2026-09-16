@@ -341,14 +341,14 @@ class BeamCenterOptimiser:
             label="Centre of beamstop",
         )
 
-        ax.axvline(
-            self.beam_center["x"] + extent[0],
-            c="#ff028d",
-            ls=":",
-            lw=1,
-            label="Centre of beam",
-        )
-        ax.axhline(self.beam_center["y"] + extent[3], c="#ff028d", ls=":", lw=1)
+        # ax.axvline(
+        #     self.beam_center["x"] + extent[0],
+        #     c="#ff028d",
+        #     ls=":",
+        #     lw=1,
+        #     label="Centre of beam",
+        # )
+        # ax.axhline(self.beam_center["y"] + extent[3], c="#ff028d", ls=":", lw=1)
 
         # lines through the beam centre showing the grating pattern's two
         # (perpendicular) fringe directions, i.e. the detector's
@@ -359,7 +359,7 @@ class BeamCenterOptimiser:
         )
         for label, chi_deg in (
             (
-                f"Pattern direction\n({self.azimuth_offset:.3f}°)",
+                f"Beam centre +\nPattern direction\n({self.azimuth_offset:.3f}°)",
                 90 + self.azimuth_offset,
             ),
             (None, self.azimuth_offset),
@@ -372,8 +372,8 @@ class BeamCenterOptimiser:
             ax.axline(
                 beam_point,
                 direction_point,
-                c="#B72818",
-                ls=":",
+                c="#ff028d",
+                ls="--",
                 lw=1,
                 label=label,
             )

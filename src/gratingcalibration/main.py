@@ -5,8 +5,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from gratingcalibration import __version__
-from gratingcalibration import PILATUS2M_PIXEL_SIZE
+from gratingcalibration import PILATUS2M_PIXEL_SIZE, __version__
 from gratingcalibration.beam_center_optimiser import BeamCenterOptimiser
 from gratingcalibration.beamstop_fitter import FitBeamstop
 from gratingcalibration.calibrant_file_writer import CalibrantFileWriter
@@ -47,21 +46,27 @@ def main(args: Sequence[str] | None = None) -> None:
         type=float,
         default=100,
         dest="grating_spacing",
-        help=("Spacing of diffraction grating in nm. Default 100.")
+        help=("Spacing of diffraction grating in nm. Default 100."),
     )
     parser.add_argument(
         "--x-offset",
         type=int,
         default=40,
         dest="x_offset",
-        help="Space (in pixels) to use around estimated beamstop and beam position. Default=40"
+        help=(
+            "Space (in pixels) to use around estimated beamstop"
+            " and beam position. Default=40"
+        ),
     )
     parser.add_argument(
         "--y-offset",
         type=int,
-        default=40,
+        default=60,
         dest="y_offset",
-        help="Space (in pixels) to use around estimated beamstop and beam position. Default=40"
+        help=(
+            "Space (in pixels) to use around estimated beamstop"
+            " and beam position. Default=60"
+        ),
     )
     parser.add_argument(
         "--peak-prominance",
@@ -85,7 +90,7 @@ def main(args: Sequence[str] | None = None) -> None:
         type=str,
         default="SAXS_calibration",
         dest="outname",
-        help="Name of output calibration file. Defaults to 'SAXS_calibration'"
+        help="Name of output calibration file. Defaults to 'SAXS_calibration'",
     )
     parser.add_argument(
         "--save-plots",
@@ -147,7 +152,7 @@ def main(args: Sequence[str] | None = None) -> None:
         int(beamstop_center["x"] + parsed_args.x_offset),
         int(beamstop_center["y"] + parsed_args.y_offset),
         # assuming we're near the top of the detector, want to be careful not to go off
-        max(0, int(beamstop_center["y"] - parsed_args.y_offset)) 
+        max(0, int(beamstop_center["y"] - parsed_args.y_offset)),
     )
 
     cropped = z_corr[d:c, a:b]
@@ -197,7 +202,8 @@ def main(args: Sequence[str] | None = None) -> None:
         peak_prominance=parsed_args.peak_prominance,
         mask=mask,
         azimuth_center=calibration_azimuth,
-        grating_spacing=parsed_args.grating_spacing*1e-9 # convert to nm here. Probably a better way to do it but make do for now.
+        # convert to nm here. Probably a better way to do it but make do for now.
+        grating_spacing=parsed_args.grating_spacing * 1e-9,
     )
     detector_calib.calculate_detector_distance()
     detector_calib.plots()
@@ -227,8 +233,6 @@ def main(args: Sequence[str] | None = None) -> None:
 
     outname = Path(parsed_args.outname).with_suffix(".nxs")
 
-    CalibrantFileWriter(
-        datadict=data_out, writepath=outpath / outname 
-    ).writer()
+    CalibrantFileWriter(datadict=data_out, writepath=outpath / outname).writer()
 
     save_all_figures(outpath)

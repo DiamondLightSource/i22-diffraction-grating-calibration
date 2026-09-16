@@ -1,14 +1,14 @@
 from collections.abc import Callable
 from typing import Any, TypedDict
 
-from gratingcalibration import PILATUS2M_PIXEL_SIZE
-
 import matplotlib.pyplot as plt
 import numpy as np
 from lmfit import Parameters, minimize
 from matplotlib.gridspec import GridSpec
 from numpy.typing import NDArray
 from pyFAI.integrator.azimuthal import AzimuthalIntegrator
+
+from gratingcalibration import PILATUS2M_PIXEL_SIZE
 
 
 class IntegrationConfig(TypedDict):

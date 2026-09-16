@@ -1,16 +1,15 @@
 from typing import Any
 
-from gratingcalibration import PILATUS2M_PIXEL_SIZE
-
 import matplotlib.pyplot as plt
 import numpy as np
-from lmfit.models import LinearModel, VoigtModel, GaussianModel
+from lmfit.models import GaussianModel, LinearModel, VoigtModel
 from matplotlib.gridspec import GridSpec
 from numpy.typing import NDArray
 from pyFAI.integrator.azimuthal import AzimuthalIntegrator
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 
+from gratingcalibration import PILATUS2M_PIXEL_SIZE
 from gratingcalibration.beam_center_optimiser import split_azimuth_window
 
 
@@ -114,7 +113,7 @@ def determine_pattern_angle(
     radial_range: tuple[float, float] = (0.0023, 0.010),
     npt: int = 360,
     prominence: float = 0.3,
-    fit_width: int = 10
+    fit_width: int = 10,
 ) -> float:
     """
     Determine how far the grating pattern is rotated (in degrees, modulo 90)
@@ -145,42 +144,43 @@ def determine_pattern_angle(
 
     arr = []
     for idx in peaks:
-        # ignore peaks near the boundary 
+        # ignore peaks near the boundary
         if 180 - np.abs(chi[idx]) < 10:
             continue
         else:
-            x_fit = chi[idx - fit_width:idx+fit_width]
-            y_fit = intensity[idx - fit_width:idx+fit_width]
+            x_fit = chi[idx - fit_width : idx + fit_width]
+            y_fit = intensity[idx - fit_width : idx + fit_width]
 
             mod = GaussianModel()
             params = mod.guess(y_fit, x=x_fit)
             result = mod.fit(y_fit, params=params, x=x_fit)
-            arr.append([result.params['center'].value, result.params['center'].stderr])
+            arr.append([result.params["center"].value, result.params["center"].stderr])
 
     arr = np.array(arr)
-    weights = 1/arr[:,1]**2
-    phase = 4*np.deg2rad(arr[:,0])
-    theta_result = np.rad2deg(np.arctan2(np.sum(weights * np.sin(phase)), 
-                                         np.sum(weights * np.cos(phase)))/4)
+    weights = 1 / arr[:, 1] ** 2
+    phase = 4 * np.deg2rad(arr[:, 0])
+    theta_result = np.rad2deg(
+        np.arctan2(np.sum(weights * np.sin(phase)), np.sum(weights * np.cos(phase))) / 4
+    )
 
     fig, ax = plt.subplots(figsize=(10, 7.5))
     fig.set_label("beam_direction")
     ax.plot(chi, intensity)
     for i in peaks:
-        ax.axvline(chi[i], c='#262626', ls = '--',
-                   label = f"{chi[i]:.3f}")
-    for i in arr[:,0]:
-        ax.axvline(i, c='hotpink', ls = '--', label=f'fit {i:.3f}')
+        ax.axvline(chi[i], c="#262626", ls="--", label=f"{chi[i]:.3f}")
+    for i in arr[:, 0]:
+        ax.axvline(i, c="hotpink", ls="--", label=f"fit {i:.3f}")
     ax.legend()
-    ax.set_xlim(-180,180)
+    ax.set_xlim(-180, 180)
 
     # # original method without peak fitting
     # # props is the second variable returned
-    # weights = props["prominences"] 
+    # weights = props["prominences"]
     # phase = 4 * np.deg2rad(chi[peaks])
     # theta = (
     #     np.rad2deg(
-    #         np.arctan2(np.sum(weights * np.sin(phase)), np.sum(weights * np.cos(phase)))
+    #         np.arctan2(np.sum(weights * np.sin(phase)),
+    #                    np.sum(weights * np.cos(phase)))
     #     )
     #     / 4
     # )
@@ -283,7 +283,7 @@ class DetectorCalibration:
         # point-to-point noise level for it to be trusted as a real fringe
         # rather than a noise fluctuation (see peak_fitter).
         self.min_peak_snr = min_peak_snr
-        
+
         self.peaks: NDArray[np.float64] | None = None
         self.fit_data: dict[Any, dict[str, Any]] | None = None
         self.detector_distance: float | None = None
@@ -402,9 +402,7 @@ class DetectorCalibration:
             # rising when the cut is reached): fall back to the brightest
             # point before the cut, which is the edge of the beamstop
             # shadow/halo.
-            lower = (
-                int(np.argmax(smoothed[: max(cut - 10, 1)])) * PILATUS2M_PIXEL_SIZE
-            )
+            lower = int(np.argmax(smoothed[: max(cut - 10, 1)])) * PILATUS2M_PIXEL_SIZE
         # ax[0].axvline(x[:cut-10][descending][0])
         # plt.show()
 

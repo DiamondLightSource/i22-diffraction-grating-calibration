@@ -6,6 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from gratingcalibration import __version__
+from gratingcalibration import PILATUS2M_PIXEL_SIZE
 from gratingcalibration.beam_center_optimiser import BeamCenterOptimiser
 from gratingcalibration.beamstop_fitter import FitBeamstop
 from gratingcalibration.calibrant_file_writer import CalibrantFileWriter
@@ -47,6 +48,20 @@ def main(args: Sequence[str] | None = None) -> None:
         default=100,
         dest="grating_spacing",
         help=("Spacing of diffraction grating in nm. Default 100.")
+    )
+    parser.add_argument(
+        "--x-offset",
+        type=int,
+        default=40,
+        dest="x_offset",
+        help="Space (in pixels) to use around estimated beamstop and beam position. Default=40"
+    )
+    parser.add_argument(
+        "--y-offset",
+        type=int,
+        default=40,
+        dest="y_offset",
+        help="Space (in pixels) to use around estimated beamstop and beam position. Default=40"
     )
     parser.add_argument(
         "--peak-prominance",
@@ -95,6 +110,8 @@ def main(args: Sequence[str] | None = None) -> None:
     beam_energy = data_in.energy
     det_mask = data_in.mask
 
+    print("Starting calibration. Locating beamstop & beam center")
+
     # -----------------------------------------------------------------------
     # STEP 1: find the centre of the beamstop
     # this should be an approximate starting point for the centre of the beam
@@ -113,9 +130,8 @@ def main(args: Sequence[str] | None = None) -> None:
     # measuring it.
     # -----------------------------------------------------------------------
 
-    pixel_size = 172e-6
     azimuth_offset = determine_pattern_angle(
-        z_corr, beamstop_center, pixel_size, mask=mask
+        z_corr, beamstop_center, PILATUS2M_PIXEL_SIZE, mask=mask
     )
     print(f"Pattern rotation approx. {azimuth_offset:.3f} degrees")
 
@@ -127,10 +143,11 @@ def main(args: Sequence[str] | None = None) -> None:
     # -----------------------------------------------------------------------
 
     a, b, c, d = (
-        int(beamstop_center["x"] - 40),
-        int(beamstop_center["x"] + 40),
-        int(beamstop_center["y"] + 60),
-        int(beamstop_center["y"] - 60),
+        int(beamstop_center["x"] - parsed_args.x_offset),
+        int(beamstop_center["x"] + parsed_args.x_offset),
+        int(beamstop_center["y"] + parsed_args.y_offset),
+        # assuming we're near the top of the detector, want to be careful not to go off
+        max(0, int(beamstop_center["y"] - parsed_args.y_offset)) 
     )
 
     cropped = z_corr[d:c, a:b]
@@ -163,11 +180,11 @@ def main(args: Sequence[str] | None = None) -> None:
     # look at the direction with the most spacings, and calibrate against
     # peaks as usual.
     # -----------------------------------------------------------------------
-
+    print("Calibrating detector distance")
     calibration_azimuth = find_calibration_azimuth(
         z_corr,
         fitter.beam_center_global,
-        pixel_size,
+        PILATUS2M_PIXEL_SIZE,
         wavelength=fitter.wavelength,
         mask=mask,
         theta=azimuth_offset,
@@ -188,13 +205,12 @@ def main(args: Sequence[str] | None = None) -> None:
     print(
         f"Detector located at {detector_calib.detector_distance:.5f} "
         f"{detector_calib.detector_distance_units}. "
-        "Writing calibration file."
     )
 
     data_out = {
         "image": data_in.raw_data,
         "wavelength": {"value": fitter.wavelength, "units": fitter.wavelength_units},
-        "pixel_size": {"value": 172e-6, "units": "m"},
+        "pixel_size": {"value": PILATUS2M_PIXEL_SIZE, "units": "m"},
         "beam_center": {
             "x": fitter.beam_center_global["x"] * 172e-6,
             "y": fitter.beam_center_global["y"] * 172e-6,

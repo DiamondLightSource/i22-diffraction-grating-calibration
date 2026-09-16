@@ -72,8 +72,6 @@ def main(args: Sequence[str] | None = None) -> None:
         dest="outname",
         help="Name of output calibration file. Defaults to 'SAXS_calibration'"
     )
-
-
     parser.add_argument(
         "--save-plots",
         action="store_false",
@@ -119,7 +117,7 @@ def main(args: Sequence[str] | None = None) -> None:
     azimuth_offset = determine_pattern_angle(
         z_corr, beamstop_center, pixel_size, mask=mask
     )
-    print(f"Pattern rotation is {azimuth_offset:.3f} degrees")
+    print(f"Pattern rotation approx. {azimuth_offset:.3f} degrees")
 
     # -----------------------------------------------------------------------
     # STEP 2: find the centre of the beam
@@ -210,7 +208,7 @@ def main(args: Sequence[str] | None = None) -> None:
 
     outpath = Path(parsed_args.output_path)
     outpath.mkdir(exist_ok=True)
-    
+
     outname = Path(parsed_args.outname).with_suffix(".nxs")
 
     CalibrantFileWriter(

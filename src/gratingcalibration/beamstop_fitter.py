@@ -271,7 +271,7 @@ class FitBeamstop:
 
         beamstop_cluster_mean = self._locate_beam_halo()
 
-        # set some limits in the image aroud the detector. 45 should be robust enough.
+        # set some limits in the image aroud the detector.
         beamstop_y_min = beamstop_cluster_mean[0] - self.y_cut
         beamstop_y_max = beamstop_cluster_mean[0] + self.y_cut
         beamstop_x_min = beamstop_cluster_mean[1] - self.x_cut

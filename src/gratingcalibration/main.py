@@ -223,8 +223,8 @@ def main(args: Sequence[str] | None = None) -> None:
         "wavelength": {"value": fitter.wavelength, "units": fitter.wavelength_units},
         "pixel_size": {"value": PILATUS2M_PIXEL_SIZE, "units": "m"},
         "beam_center": {
-            "x": fitter.beam_center_global["x"] * 172e-6,
-            "y": fitter.beam_center_global["y"] * 172e-6,
+            "x": fitter.beam_center_global["x"] * PILATUS2M_PIXEL_SIZE,
+            "y": fitter.beam_center_global["y"] * PILATUS2M_PIXEL_SIZE,
             "units": "m",
         },
         "detector_distance": {

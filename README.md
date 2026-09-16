@@ -27,31 +27,15 @@ source .venv/bin/activate
 
 ## Usage
 
-```
-$ i22-diffraction-grating-calibration --file /path/to/input.nxs --output /path/to/output/folder --save-plots
-```
-
-The calibration NeXuS file (SAXS_calibration.nxs) will be stored in the `output_folder`, along with plots made to show how the calibration has been performed.
-
-The final figure generated, `detector_calibration.png`, shows how peaks have been found, fit, and indexed in the azimuthally integrated scattering pattern to calculate the detector distance from the sample. The initial peak identification is performed using [`scipy.signal.find_peaks`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.find_peaks.html), using a peak prominance of 0.1. This has performed well in testing, but may not be universally optimal. Should this need fine tuning, the following command could be used instead:
+Simple usage:
 
 ```
-$ i22-diffraction-grating-calibration --file /path/to/input.nxs --output /path/to/output/folder --save-plots --peak-prominance X
+$ i22-diffraction-grating-calibration --file /path/to/input.nxs --output my_calibration_folder 
 ```
-
-where `X` is some float value . Set this lower (than `0.1` to find more peaks, higher to find fewer.
 
 ## What's happening?
 
-This calibration program works by:
-
-1. Identifying the beamstop & fitting and approximate center
-    * Shown in the `beamstop_fit.png` figure   
-2. Optimising the beam centre through x/y detector profile matching
-    * See `beam_profiles_xy.png` and `beam_center_location.png` to see how well the profiles have been matched, and where the beam center has been located
-3. Calibrate the detector distance based on grating fringe spacing
-    * The peaks found, and how they have been indexed, is shown in `detector_calibration.png`. 
-
+For a practical overview of the program and its use, see the [docs page](docs/docs.md)
 
 ## Notes
 

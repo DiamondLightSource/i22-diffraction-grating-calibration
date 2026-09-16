@@ -124,7 +124,9 @@ def main(args: Sequence[str] | None = None) -> None:
     # STEP 1: find the centre of the beamstop
     # this should be an approximate starting point for the centre of the beam
     # -----------------------------------------------------------------------
-    beamstop = FitBeamstop(z_corr, plot=True)
+    beamstop = FitBeamstop(
+        z_corr, plot=True, x_cut=parsed_args.x_offset, y_cut=parsed_args.y_offset
+    )
     beamstop_center = beamstop.beamstop_center
     mask = det_mask + beamstop.beamstop_mask
 

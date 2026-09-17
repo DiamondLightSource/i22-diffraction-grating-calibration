@@ -8,6 +8,8 @@ from matplotlib.gridspec import GridSpec
 from numpy.typing import NDArray
 from pyFAI.integrator.azimuthal import AzimuthalIntegrator
 
+from gratingcalibration import PILATUS2M_PIXEL_SIZE
+
 
 class IntegrationConfig(TypedDict):
     npt: int
@@ -50,8 +52,6 @@ class BeamCenterOptimiser:
         azimuth_offset: float = 0.0,
         integration_range: float = 20,
     ) -> None:
-        # some constants for the integration
-        self.PILATUS2M_PIXEL_SIZE = 172e-6
         # half-width (degrees) of each integration sector. A narrow sector
         # (e.g. a few degrees) is very sensitive to any thin, localised
         # angular artefact close to the beamstop - e.g. its support arm's
@@ -102,8 +102,8 @@ class BeamCenterOptimiser:
 
         # set up the azimuthal integrator
         self.ai = AzimuthalIntegrator(
-            pixel1=self.PILATUS2M_PIXEL_SIZE,
-            pixel2=self.PILATUS2M_PIXEL_SIZE,
+            pixel1=PILATUS2M_PIXEL_SIZE,
+            pixel2=PILATUS2M_PIXEL_SIZE,
             wavelength=self.wavelength,
         )
         # results store to be used during optimisation
@@ -141,7 +141,7 @@ class BeamCenterOptimiser:
         """
         if self.optimise_direction == "x":
             # fix y
-            self.ai.poni1 = self.beamstop_center["y"] * self.PILATUS2M_PIXEL_SIZE
+            self.ai.poni1 = self.beamstop_center["y"] * PILATUS2M_PIXEL_SIZE
             self.target_configs = {
                 key: value
                 for key, value in self.INTEGRATION_CONFIGS.items()
@@ -149,7 +149,7 @@ class BeamCenterOptimiser:
             }
         elif self.optimise_direction == "y":
             # fix x
-            self.ai.poni2 = self.beamstop_center["x"] * self.PILATUS2M_PIXEL_SIZE
+            self.ai.poni2 = self.beamstop_center["x"] * PILATUS2M_PIXEL_SIZE
             self.target_configs = {
                 key: value
                 for key, value in self.INTEGRATION_CONFIGS.items()
@@ -191,9 +191,9 @@ class BeamCenterOptimiser:
         set the new center of integration depending on the target optimiser
         """
         if self.optimise_direction == "x":
-            self.ai.poni2 = pos * self.PILATUS2M_PIXEL_SIZE
+            self.ai.poni2 = pos * PILATUS2M_PIXEL_SIZE
         elif self.optimise_direction == "y":
-            self.ai.poni1 = pos * self.PILATUS2M_PIXEL_SIZE
+            self.ai.poni1 = pos * PILATUS2M_PIXEL_SIZE
 
     def _integrate_sector(
         self, config: IntegrationConfig
@@ -341,14 +341,14 @@ class BeamCenterOptimiser:
             label="Centre of beamstop",
         )
 
-        ax.axvline(
-            self.beam_center["x"] + extent[0],
-            c="#ff028d",
-            ls=":",
-            lw=1,
-            label="Centre of beam",
-        )
-        ax.axhline(self.beam_center["y"] + extent[3], c="#ff028d", ls=":", lw=1)
+        # ax.axvline(
+        #     self.beam_center["x"] + extent[0],
+        #     c="#ff028d",
+        #     ls=":",
+        #     lw=1,
+        #     label="Centre of beam",
+        # )
+        # ax.axhline(self.beam_center["y"] + extent[3], c="#ff028d", ls=":", lw=1)
 
         # lines through the beam centre showing the grating pattern's two
         # (perpendicular) fringe directions, i.e. the detector's
@@ -359,7 +359,7 @@ class BeamCenterOptimiser:
         )
         for label, chi_deg in (
             (
-                f"Pattern direction\n({self.azimuth_offset:.3f}°)",
+                f"Beam centre +\nPattern direction\n({self.azimuth_offset:.3f}°)",
                 90 + self.azimuth_offset,
             ),
             (None, self.azimuth_offset),
@@ -372,8 +372,8 @@ class BeamCenterOptimiser:
             ax.axline(
                 beam_point,
                 direction_point,
-                c="#B72818",
-                ls=":",
+                c="#ff028d",
+                ls="--",
                 lw=1,
                 label=label,
             )

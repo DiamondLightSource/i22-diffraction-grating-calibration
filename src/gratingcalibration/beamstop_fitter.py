@@ -10,9 +10,13 @@ from scipy.special import erf
 
 
 class FitBeamstop:
-    def __init__(self, image: NDArray[Any], plot: bool = False) -> None:
+    def __init__(
+        self, image: NDArray[Any], plot: bool = False, y_cut: int = 60, x_cut: int = 40
+    ) -> None:
         self.image = image
         self.result = None
+        self.x_cut = x_cut
+        self.y_cut = y_cut
         self.beamstop_center = self.find_beamstop(plot=plot)
 
     @staticmethod
@@ -267,11 +271,11 @@ class FitBeamstop:
 
         beamstop_cluster_mean = self._locate_beam_halo()
 
-        # set some limits in the image aroud the detector. 45 should be robust enough.
-        beamstop_y_min = beamstop_cluster_mean[0] - 60
-        beamstop_y_max = beamstop_cluster_mean[0] + 60
-        beamstop_x_min = beamstop_cluster_mean[1] - 40
-        beamstop_x_max = beamstop_cluster_mean[1] + 40
+        # set some limits in the image aroud the detector.
+        beamstop_y_min = beamstop_cluster_mean[0] - self.y_cut
+        beamstop_y_max = beamstop_cluster_mean[0] + self.y_cut
+        beamstop_x_min = beamstop_cluster_mean[1] - self.x_cut
+        beamstop_x_max = beamstop_cluster_mean[1] + self.x_cut
 
         # take the region aroud the beam/beamstop for fitting purposes
         region = self.image[

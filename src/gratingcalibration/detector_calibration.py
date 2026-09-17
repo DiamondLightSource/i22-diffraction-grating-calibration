@@ -2,13 +2,14 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lmfit.models import LinearModel, VoigtModel
+from lmfit.models import GaussianModel, LinearModel, VoigtModel
 from matplotlib.gridspec import GridSpec
 from numpy.typing import NDArray
 from pyFAI.integrator.azimuthal import AzimuthalIntegrator
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
 
+from gratingcalibration import PILATUS2M_PIXEL_SIZE
 from gratingcalibration.beam_center_optimiser import split_azimuth_window
 
 
@@ -19,7 +20,7 @@ def robust_noise_floor(intensity: NDArray[np.float64]) -> float:
     a real feature rather than a noise fluctuation.
     """
     diffs = np.diff(intensity)
-    return float(1.4826 * np.median(np.abs(diffs - np.median(diffs))))
+    return float(1.5 * np.median(np.abs(diffs - np.median(diffs))))
 
 
 def find_multiple_sequence(
@@ -110,8 +111,9 @@ def determine_pattern_angle(
     wavelength: float = 1e-10,
     mask: NDArray[Any] | None = None,
     radial_range: tuple[float, float] = (0.0023, 0.010),
-    npt: int = 1440,
+    npt: int = 360,
     prominence: float = 0.3,
+    fit_width: int = 10,
 ) -> float:
     """
     Determine how far the grating pattern is rotated (in degrees, modulo 90)
@@ -136,19 +138,53 @@ def determine_pattern_angle(
     chi, intensity = ai.integrate_radial(
         image, npt=npt, radial_range=radial_range, radial_unit="r_m", mask=mask
     )
-    peaks, props = find_peaks(intensity, prominence=prominence)
+    peaks, _ = find_peaks(intensity, prominence=prominence)
     if peaks.size == 0:
         return 0.0
 
-    weights = props["prominences"]
-    phase = 4 * np.deg2rad(chi[peaks])
-    theta = (
-        np.rad2deg(
-            np.arctan2(np.sum(weights * np.sin(phase)), np.sum(weights * np.cos(phase)))
-        )
-        / 4
+    arr = []
+    for idx in peaks:
+        # ignore peaks near the boundary
+        if 180 - np.abs(chi[idx]) < 10:
+            continue
+        else:
+            x_fit = chi[idx - fit_width : idx + fit_width]
+            y_fit = intensity[idx - fit_width : idx + fit_width]
+
+            mod = GaussianModel()
+            params = mod.guess(y_fit, x=x_fit)
+            result = mod.fit(y_fit, params=params, x=x_fit)
+            arr.append([result.params["center"].value, result.params["center"].stderr])
+
+    arr = np.array(arr)
+    weights = 1 / arr[:, 1] ** 2
+    phase = 4 * np.deg2rad(arr[:, 0])
+    theta_result = np.rad2deg(
+        np.arctan2(np.sum(weights * np.sin(phase)), np.sum(weights * np.cos(phase))) / 4
     )
-    return float(theta)
+
+    fig, ax = plt.subplots(figsize=(10, 7.5))
+    fig.set_label("beam_direction")
+    ax.plot(chi, intensity)
+    for i in peaks:
+        ax.axvline(chi[i], c="#262626", ls="--", label=f"{chi[i]:.3f}")
+    for i in arr[:, 0]:
+        ax.axvline(i, c="hotpink", ls="--", label=f"fit {i:.3f}")
+    ax.legend()
+    ax.set_xlim(-180, 180)
+
+    # # original method without peak fitting
+    # # props is the second variable returned
+    # weights = props["prominences"]
+    # phase = 4 * np.deg2rad(chi[peaks])
+    # theta = (
+    #     np.rad2deg(
+    #         np.arctan2(np.sum(weights * np.sin(phase)),
+    #                    np.sum(weights * np.cos(phase)))
+    #     )
+    #     / 4
+    # )
+    return float(theta_result)
 
 
 def find_calibration_azimuth(
@@ -247,7 +283,6 @@ class DetectorCalibration:
         # point-to-point noise level for it to be trusted as a real fringe
         # rather than a noise fluctuation (see peak_fitter).
         self.min_peak_snr = min_peak_snr
-        self.PILATUS2M_PIXEL_SIZE = 172e-6  # TODO move away from ~ hard coding this
 
         self.peaks: NDArray[np.float64] | None = None
         self.fit_data: dict[Any, dict[str, Any]] | None = None
@@ -347,7 +382,7 @@ class DetectorCalibration:
             cut = int(regions[-1] + 20) if regions.size > 0 else len(avg) - 1
         cut = min(cut, len(avg) - 1)
         # convert it to detector distance
-        upper = cut * self.PILATUS2M_PIXEL_SIZE
+        upper = cut * PILATUS2M_PIXEL_SIZE
 
         # If we still have some beamstop in the signal we want to make sure we're not
         # including it as a peak.
@@ -361,15 +396,13 @@ class DetectorCalibration:
             j > smoothed[i : i + 10].mean() for i, j in enumerate(smoothed[: cut - 10])
         ]
         if any(descending):
-            lower = x[: cut - 10][descending][0] * self.PILATUS2M_PIXEL_SIZE
+            lower = x[: cut - 10][descending][0] * PILATUS2M_PIXEL_SIZE
         else:
             # never found a descending point (e.g. the signal is still
             # rising when the cut is reached): fall back to the brightest
             # point before the cut, which is the edge of the beamstop
             # shadow/halo.
-            lower = (
-                int(np.argmax(smoothed[: max(cut - 10, 1)])) * self.PILATUS2M_PIXEL_SIZE
-            )
+            lower = int(np.argmax(smoothed[: max(cut - 10, 1)])) * PILATUS2M_PIXEL_SIZE
         # ax[0].axvline(x[:cut-10][descending][0])
         # plt.show()
 
@@ -390,10 +423,10 @@ class DetectorCalibration:
         assert self.beam_center is not None
 
         ai = AzimuthalIntegrator(
-            poni1=self.beam_center["y"] * self.PILATUS2M_PIXEL_SIZE,
-            poni2=self.beam_center["x"] * self.PILATUS2M_PIXEL_SIZE,
-            pixel1=self.PILATUS2M_PIXEL_SIZE,
-            pixel2=self.PILATUS2M_PIXEL_SIZE,
+            poni1=self.beam_center["y"] * PILATUS2M_PIXEL_SIZE,
+            poni2=self.beam_center["x"] * PILATUS2M_PIXEL_SIZE,
+            pixel1=PILATUS2M_PIXEL_SIZE,
+            pixel2=PILATUS2M_PIXEL_SIZE,
             wavelength=self.wavelength,
         )
 

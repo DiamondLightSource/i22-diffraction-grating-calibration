@@ -5,7 +5,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from gratingcalibration import __version__
+from gratingcalibration import PILATUS2M_PIXEL_SIZE, __version__
 from gratingcalibration.beam_center_optimiser import BeamCenterOptimiser
 from gratingcalibration.beamstop_fitter import FitBeamstop
 from gratingcalibration.calibrant_file_writer import CalibrantFileWriter
@@ -42,26 +42,63 @@ def main(args: Sequence[str] | None = None) -> None:
         "--file", type=Path, default=None, dest="input", help="Path to input nexus file"
     )
     parser.add_argument(
+        "--grating-spacing",
+        type=float,
+        default=100,
+        dest="grating_spacing",
+        help=("Spacing of diffraction grating in nm. Default 100."),
+    )
+    parser.add_argument(
+        "--x-offset",
+        type=int,
+        default=40,
+        dest="x_offset",
+        help=(
+            "Space (in pixels) to use around estimated beamstop"
+            " and beam position. Default=40"
+        ),
+    )
+    parser.add_argument(
+        "--y-offset",
+        type=int,
+        default=60,
+        dest="y_offset",
+        help=(
+            "Space (in pixels) to use around estimated beamstop"
+            " and beam position. Default=60"
+        ),
+    )
+    parser.add_argument(
         "--peak-prominance",
         type=float,
         default=0.1,
         dest="peak_prominance",
         help=(
-            "Peak prominance to use in scipy.signal.find_peaks when"
+            "Peak prominance to use in scipy.signal.find_peaks when "
             "finding grating fringes. Default=0.1"
         ),
     )
     parser.add_argument(
-        "--output",
+        "--output-path",
         type=Path,
         default="calibration",
-        dest="output",
-        help="Path to where calibration file will be written",
+        dest="output_path",
+        help=(
+            "Path to where calibration file will be written. Defaults to 'calibration'"
+        ),
     )
     parser.add_argument(
-        "--save-plots",
-        action="store_false",
-        help="Save the plots generated as part of the calibration",
+        "--outname",
+        type=str,
+        default="SAXS_calibration",
+        dest="outname",
+        help="Name of output calibration file. Defaults to 'SAXS_calibration'",
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        dest="no_plots",
+        help="Don't save processing plots alongside the calibration file",
     )
 
     parsed_args = parser.parse_args(args)
@@ -81,11 +118,15 @@ def main(args: Sequence[str] | None = None) -> None:
     beam_energy = data_in.energy
     det_mask = data_in.mask
 
+    print("Starting calibration. Locating beamstop & beam center")
+
     # -----------------------------------------------------------------------
     # STEP 1: find the centre of the beamstop
     # this should be an approximate starting point for the centre of the beam
     # -----------------------------------------------------------------------
-    beamstop = FitBeamstop(z_corr, plot=True)
+    beamstop = FitBeamstop(
+        z_corr, plot=True, x_cut=parsed_args.x_offset, y_cut=parsed_args.y_offset
+    )
     beamstop_center = beamstop.beamstop_center
     mask = det_mask + beamstop.beamstop_mask
 
@@ -99,11 +140,10 @@ def main(args: Sequence[str] | None = None) -> None:
     # measuring it.
     # -----------------------------------------------------------------------
 
-    pixel_size = 172e-6
     azimuth_offset = determine_pattern_angle(
-        z_corr, beamstop_center, pixel_size, mask=mask
+        z_corr, beamstop_center, PILATUS2M_PIXEL_SIZE, mask=mask
     )
-    print(f"Pattern rotation is {azimuth_offset:.3f} degrees")
+    print(f"Pattern rotation approx. {azimuth_offset:.3f} degrees")
 
     # -----------------------------------------------------------------------
     # STEP 2: find the centre of the beam
@@ -113,10 +153,11 @@ def main(args: Sequence[str] | None = None) -> None:
     # -----------------------------------------------------------------------
 
     a, b, c, d = (
-        int(beamstop_center["x"] - 40),
-        int(beamstop_center["x"] + 40),
-        int(beamstop_center["y"] + 60),
-        int(beamstop_center["y"] - 60),
+        int(beamstop_center["x"] - parsed_args.x_offset),
+        int(beamstop_center["x"] + parsed_args.x_offset),
+        int(beamstop_center["y"] + parsed_args.y_offset),
+        # assuming we're near the top of the detector, want to be careful not to go off
+        max(0, int(beamstop_center["y"] - parsed_args.y_offset)),
     )
 
     cropped = z_corr[d:c, a:b]
@@ -149,11 +190,11 @@ def main(args: Sequence[str] | None = None) -> None:
     # look at the direction with the most spacings, and calibrate against
     # peaks as usual.
     # -----------------------------------------------------------------------
-
+    print("Calibrating detector distance")
     calibration_azimuth = find_calibration_azimuth(
         z_corr,
         fitter.beam_center_global,
-        pixel_size,
+        PILATUS2M_PIXEL_SIZE,
         wavelength=fitter.wavelength,
         mask=mask,
         theta=azimuth_offset,
@@ -166,6 +207,8 @@ def main(args: Sequence[str] | None = None) -> None:
         peak_prominance=parsed_args.peak_prominance,
         mask=mask,
         azimuth_center=calibration_azimuth,
+        # convert to nm here. Probably a better way to do it but make do for now.
+        grating_spacing=parsed_args.grating_spacing * 1e-9,
     )
     detector_calib.calculate_detector_distance()
     detector_calib.plots()
@@ -173,16 +216,15 @@ def main(args: Sequence[str] | None = None) -> None:
     print(
         f"Detector located at {detector_calib.detector_distance:.5f} "
         f"{detector_calib.detector_distance_units}. "
-        "Writing calibration file."
     )
 
     data_out = {
         "image": data_in.raw_data,
         "wavelength": {"value": fitter.wavelength, "units": fitter.wavelength_units},
-        "pixel_size": {"value": 172e-6, "units": "m"},
+        "pixel_size": {"value": PILATUS2M_PIXEL_SIZE, "units": "m"},
         "beam_center": {
-            "x": fitter.beam_center_global["x"] * 172e-6,
-            "y": fitter.beam_center_global["y"] * 172e-6,
+            "x": fitter.beam_center_global["x"] * PILATUS2M_PIXEL_SIZE,
+            "y": fitter.beam_center_global["y"] * PILATUS2M_PIXEL_SIZE,
             "units": "m",
         },
         "detector_distance": {
@@ -191,11 +233,12 @@ def main(args: Sequence[str] | None = None) -> None:
         },
     }
 
-    out = Path(parsed_args.output)
-    out.mkdir(exist_ok=True)
+    outpath = Path(parsed_args.output_path)
+    outpath.mkdir(exist_ok=True)
 
-    CalibrantFileWriter(
-        datadict=data_out, writepath=out / "SAXS_calibration.nxs"
-    ).writer()
+    outname = Path(parsed_args.outname).with_suffix(".nxs")
 
-    save_all_figures(out)
+    CalibrantFileWriter(datadict=data_out, writepath=outpath / outname).writer()
+
+    if not parsed_args.no_plots:
+        save_all_figures(outpath)

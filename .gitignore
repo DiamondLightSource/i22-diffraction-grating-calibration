@@ -71,3 +71,7 @@ lockfiles/
 .ruff_cache/
 
 .example_data/
+
+scripts/*/**
+analyse.sh
+generate.sh

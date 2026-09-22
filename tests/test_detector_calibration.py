@@ -57,7 +57,7 @@ def test_radial_range(
         wavelength=1e-10,  # this doesn't actually matter
     )
 
-    lims = dc._determine_radial_range()  # pyright: ignore[reportPrivateUsage]
+    lims = dc.determine_radial_range()  # pyright: ignore[reportPrivateUsage]
     lower, upper = [i / PILATUS2M_PIXEL_SIZE for i in lims]
 
     print(lower, radius)

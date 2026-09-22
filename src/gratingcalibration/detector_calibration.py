@@ -288,48 +288,47 @@ class DetectorCalibration:
         self.fit_data: dict[Any, dict[str, Any]] | None = None
         self.detector_distance: float | None = None
 
-    def _scan_direction(self) -> tuple[int, int]:
-        """
-        the (dy, dx) unit step, in pixels, that most closely matches
-        self.azimuth_center, using pyFAI's convention that chi=0 points along
-        +x and chi=90 points along +y.
-        """
-        azimuth = self.azimuth_center % 360
-        cardinal_directions = {0: (0, 1), 90: (1, 0), 180: (0, -1), 270: (-1, 0)}
-        nearest = min(
-            cardinal_directions,
-            key=lambda deg: min(abs(azimuth - deg), 360 - abs(azimuth - deg)),
-        )
-        return cardinal_directions[nearest]
-
     def _radial_scan_signal(self, half_width: int) -> NDArray[np.float64]:
         """
-        sum a strip of the image, `half_width` pixels either side of the beam
-        centre, running away from the beam centre along whichever cardinal
-        direction (down/up/left/right) is closest to self.azimuth_center.
-        Used as a cheap 1D proxy for where the grating fringes/detector
-        dead-zones are, without doing a full azimuthal integration.
+        sum a strip of the image, `half_width` pixels either side of the line
+        running out from the beam centre along self.azimuth_center (pyFAI's
+        convention: chi=0 points along +x, chi=90 along +y), one pixel of
+        radial distance per output element. Used as a cheap 1D proxy for
+        where the grating fringes/detector dead-zones are, without doing a
+        full azimuthal integration.
+
+        This follows the actual azimuth, in rotated coordinates, rather than
+        snapping to the nearest cardinal (down/up/left/right) direction and
+        summing a plain Cartesian row/column: a Cartesian strip drifts away
+        from a rotated fringe line as the radius grows (by r*sin(offset) at
+        radius r), and can lose it entirely well before reaching the first
+        order, whereas a strip built in the rotated frame tracks the fringe
+        at any azimuth.
         """
         assert self.image is not None
         assert self.beam_center is not None
 
-        y, x = int(self.beam_center["y"]), int(self.beam_center["x"])
-        dy, dx = self._scan_direction()
+        cx, cy = self.beam_center["x"], self.beam_center["y"]
+        ny, nx = self.image.shape
+        theta = np.deg2rad(self.azimuth_center)
+        cos_t, sin_t = np.cos(theta), np.sin(theta)
 
-        avg: NDArray[np.float64]
-        if dy == 1:
-            avg = self.image[y:, x - half_width : x + half_width].sum(axis=1)
-        elif dy == -1:
-            avg = self.image[: y + 1, x - half_width : x + half_width][::-1].sum(axis=1)
-        elif dx == 1:
-            avg = self.image[y - half_width : y + half_width, x:].sum(axis=0)
-        else:
-            avg = self.image[y - half_width : y + half_width, : x + 1][:, ::-1].sum(
-                axis=0
-            )
+        yy, xx = np.indices(self.image.shape)
+        dx = xx - cx
+        dy = yy - cy
+        # v: signed radial distance along the azimuth, away from the beam
+        # centre. u: perpendicular distance from that line.
+        v = dx * cos_t + dy * sin_t
+        u = -dx * sin_t + dy * cos_t
+
+        max_r = int(np.hypot(max(cx, nx - cx), max(cy, ny - cy))) + 1
+        strip = (np.abs(u) <= half_width) & (v >= 0) & (v < max_r)
+
+        avg = np.zeros(max_r, dtype=np.float64)
+        np.add.at(avg, v[strip].astype(np.intp), self.image[strip])
         return avg
 
-    def _determine_radial_range(self) -> tuple[float, float]:
+    def determine_radial_range(self) -> tuple[float, float]:
         """
         determine an approximate radial range for integration.
 
@@ -413,7 +412,7 @@ class DetectorCalibration:
     ) -> NDArray[np.float64]:
         """
         perform the azimuthal integration of the detector image.
-        The radial range of the integration is determined by the _determine_radial_range
+        The radial range of the integration is determined by the determine_radial_range
         function if a range is not explicitly given.
 
         npt: int
@@ -431,7 +430,7 @@ class DetectorCalibration:
         )
 
         radial_range = (
-            self._determine_radial_range() if auto_radial is None else auto_radial
+            self.determine_radial_range() if auto_radial is None else auto_radial
         )
 
         # make an I vs. q profile from a small sector centred on
@@ -526,6 +525,27 @@ class DetectorCalibration:
     def calculate_detector_distance(self) -> None:
         if self.peaks is None:
             self.peaks = self.peak_fitter()
+
+        # A 2-point "fit" is a straight line through both points by
+        # construction, with zero residual regardless of whether
+        # find_multiple_sequence assigned them the right order indices - so
+        # it can't self-validate at all. With too few confirmed peaks
+        # (usually because a large pattern rotation left few genuine orders
+        # resolvable - see module docs), a spurious peak that happens to
+        # divide evenly by some small, unrelated spacing can hijack the
+        # whole fit and produce a confident-looking but wrong distance,
+        # rather than a visible failure. Requiring at least 3 confirmed
+        # peaks means find_multiple_sequence's own self-consistency check
+        # has more than one degree of freedom to actually validate against.
+        if len(self.peaks) < 3:
+            raise RuntimeError(
+                f"Only {len(self.peaks)} confirmed grating order peak(s) found "
+                "- too few to reliably fit a detector distance (need at least "
+                "3). This usually means a large pattern rotation, weak "
+                "signal, or masking left too few real orders resolvable; "
+                "check the beam centre/azimuth and consider a different "
+                "--peak-prominance or grating spacing."
+            )
 
         lin = LinearModel()
         lin_pars = lin.guess(self.peaks[:, 1], x=self.peaks[:, 0])

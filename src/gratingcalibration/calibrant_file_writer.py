@@ -288,6 +288,6 @@ class CalibrantFileWriter:
 
         # write the file if we want
         if self.writepath is not None:
-            print(f"Writing calibration file to: {self.writepath}")
+            print(f"Writing calibration file to: {self.writepath}\n")
             nexus_output = NXroot(nx_entry)
             nexus_output.save(self.writepath, "w")

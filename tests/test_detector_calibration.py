@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from gratingcalibration import PILATUS2M_PIXEL_SIZE
 from gratingcalibration.data_loader import DataLoader
 from gratingcalibration.detector_calibration import (
     DetectorCalibration,
@@ -56,8 +57,8 @@ def test_radial_range(
         wavelength=1e-10,  # this doesn't actually matter
     )
 
-    lims = dc._determine_radial_range()  # pyright: ignore[reportPrivateUsage]
-    lower, upper = [i / dc.PILATUS2M_PIXEL_SIZE for i in lims]
+    lims = dc.determine_radial_range()  # pyright: ignore[reportPrivateUsage]
+    lower, upper = [i / PILATUS2M_PIXEL_SIZE for i in lims]
 
     print(lower, radius)
     # expect the lower limit to be ~ the same position as the beamstop edge.

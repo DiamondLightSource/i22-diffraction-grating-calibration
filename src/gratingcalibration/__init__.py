@@ -9,3 +9,5 @@
 from ._version import __version__
 
 __all__ = ["__version__"]
+
+PILATUS2M_PIXEL_SIZE = 172e-6

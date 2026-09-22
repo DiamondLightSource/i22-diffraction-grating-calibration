@@ -215,7 +215,7 @@ def main(args: Sequence[str] | None = None) -> None:
 
     print(
         f"Detector located at {detector_calib.detector_distance:.5f} "
-        f"{detector_calib.detector_distance_units}\n. "
+        f"{detector_calib.detector_distance_units}\n."
     )
 
     data_out = {

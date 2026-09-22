@@ -45,6 +45,16 @@ class DataLoader:
                 f"Expected path is: {datapath}"
             )
 
+        if data_entry.is_external():
+            if not Path(data_entry.nxfilename).exists():
+                raise FileNotFoundError(
+                    f"Looked for the detector image in {self.filepath} "
+                    f"at NeXuS link {datapath}. This points to the entry "
+                    f"{data_entry.nxtarget} in file {data_entry.nxfilename}. "
+                    "This file cannot be found. Save in the current working "
+                    "directory before proceeding."
+                )
+
         z = data_entry[-1, -1]
         self.raw_data = np.array(z)
 

@@ -118,7 +118,7 @@ def main(args: Sequence[str] | None = None) -> None:
     beam_energy = data_in.energy
     det_mask = data_in.mask
 
-    print("Starting calibration. Locating beamstop & beam center\n")
+    print("Starting calibration. Locating beamstop & beam center")
 
     # -----------------------------------------------------------------------
     # STEP 1: find the centre of the beamstop
@@ -143,7 +143,7 @@ def main(args: Sequence[str] | None = None) -> None:
     azimuth_offset = determine_pattern_angle(
         z_corr, beamstop_center, PILATUS2M_PIXEL_SIZE, mask=mask
     )
-    print(f"Pattern rotation approx. {azimuth_offset:.3f} degrees\n")
+    print(f"Pattern rotation approx. {azimuth_offset:.3f} degrees")
 
     # -----------------------------------------------------------------------
     # STEP 2: find the centre of the beam
@@ -190,7 +190,7 @@ def main(args: Sequence[str] | None = None) -> None:
     # look at the direction with the most spacings, and calibrate against
     # peaks as usual.
     # -----------------------------------------------------------------------
-    print("Calibrating detector distance\n")
+    print("Calibrating detector distance")
     calibration_azimuth = find_calibration_azimuth(
         z_corr,
         fitter.beam_center_global,
@@ -215,7 +215,7 @@ def main(args: Sequence[str] | None = None) -> None:
 
     print(
         f"Detector located at {detector_calib.detector_distance:.5f} "
-        f"{detector_calib.detector_distance_units}\n."
+        f"{detector_calib.detector_distance_units}."
     )
 
     data_out = {

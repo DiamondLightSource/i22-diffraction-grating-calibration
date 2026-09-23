@@ -7,20 +7,26 @@
 
 Tool for calibrating a SAXS beamline using diffraction grating. Currently under construction.
 
-
-What            | Where
-:---:           | :---:
-Source          | <https://github.com/DiamondLightSource/i22-diffraction-grating-calibration>
-Docker          | `docker run ghcr.io/diamondlightsource/i22-diffraction-grating-calibration:latest`
-Releases        | <https://github.com/DiamondLightSource/i22-diffraction-grating-calibration/releases>
+[comment]: <> ( What            | Where )
+[comment]: <> ( :---:           | :---:)
+[comment]: <> ( Source          | <https://github.com/DiamondLightSource/i22-diffraction-grating-calibration>)
+[comment]: <> ( Docker          | `docker run ghcr.io/diamondlightsource/i22-diffraction-grating-calibration:latest`)
+[comment]: <> ( Releases        | <https://github.com/DiamondLightSource/i22-diffraction-grating-calibration/releases>)
 
 ## Installation
+### Load module
+On the DLS module system, you can load this directly with :
 
+```
+module load grating-calibration-i22
+```
+
+### Install from source
 On the DLS module system, you can install this tool as:
 
 ```
 module load uv
-uv venv 
+uv venv --python 3.12
 uv pip install git+https://github.com/DiamondLightSource/i22-diffraction-grating-calibration.git
 source .venv/bin/activate
 ```

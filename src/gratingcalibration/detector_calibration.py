@@ -8,6 +8,7 @@ from numpy.typing import NDArray
 from pyFAI.integrator.azimuthal import AzimuthalIntegrator
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import find_peaks
+from uncertainties import ufloat
 
 from gratingcalibration import PILATUS2M_PIXEL_SIZE
 from gratingcalibration.beam_center_optimiser import split_azimuth_window
@@ -287,6 +288,7 @@ class DetectorCalibration:
         self.peaks: NDArray[np.float64] | None = None
         self.fit_data: dict[Any, dict[str, Any]] | None = None
         self.detector_distance: float | None = None
+        self.detector_distance_error: float | None = None
 
     def _radial_scan_signal(self, half_width: int) -> NDArray[np.float64]:
         """
@@ -551,10 +553,15 @@ class DetectorCalibration:
         lin_pars = lin.guess(self.peaks[:, 1], x=self.peaks[:, 0])
         lin_res = lin.fit(self.peaks[:, 1], lin_pars, x=self.peaks[:, 0])
 
-        fringe_spacing = lin_res.params["slope"].value
-        # should do some unit assertion around here
-        self.detector_distance = fringe_spacing * self.grating_spacing / self.wavelength
+        fringe_spacing = ufloat(
+            lin_res.params["slope"].value, lin_res.params["slope"].stderr
+        )
+        detector_distance = fringe_spacing * self.grating_spacing / self.wavelength  # pyright: ignore[reportOperatorIssue]
+
+        self.detector_distance = detector_distance.n
         self.detector_distance_units = "m"
+        self.detector_distance_error = detector_distance.s
+        self.detector_distance_error_units = "m"
 
     def plots(self) -> None:
         assert self.peaks is not None

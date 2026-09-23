@@ -17,14 +17,21 @@ from gratingcalibration.detector_calibration import (
 )
 
 
-def save_all_figures(output_dir: Path) -> None:
+def save_all_figures(output_dir: Path, saving: bool = True) -> None:
     """
     save all figures that have been generated along the way in the output directory
     """
+    n_figs = len(plt.get_fignums())
     for num in plt.get_fignums():
         fig = plt.figure(num)
         label = fig.get_label() or f"fig{num}"
-        fig.savefig(output_dir / f"{label}.png", dpi=200, bbox_inches="tight")
+        if saving:
+            fig.savefig(output_dir / f"{label}.png", dpi=200, bbox_inches="tight")
+        # we do this so that only the last figure gets opened.
+        # hacky but I think this is the only way.
+        if num != n_figs:
+            plt.close(fig)
+    plt.show()
 
 
 def main(args: Sequence[str] | None = None) -> None:
@@ -81,10 +88,14 @@ def main(args: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--output-path",
         type=Path,
-        default="calibration",
+        default="processing",
         dest="output_path",
         help=(
-            "Path to where calibration file will be written. Defaults to 'calibration'"
+            "Relative path to where calibration file will be written. "
+            "Defaults to 'processing'. Accepts any pathtype, "
+            "but will be relative by default. "
+            "Extended paths (e.g. `processing/my/experiment`) can be given"
+            ", directories will be created if not already found"
         ),
     )
     parser.add_argument(
@@ -215,6 +226,7 @@ def main(args: Sequence[str] | None = None) -> None:
 
     print(
         f"Detector located at {detector_calib.detector_distance:.5f} "
+        f"+/- {detector_calib.detector_distance_error:.5f} "
         f"{detector_calib.detector_distance_units}."
     )
 
@@ -231,14 +243,18 @@ def main(args: Sequence[str] | None = None) -> None:
             "value": detector_calib.detector_distance,
             "units": detector_calib.detector_distance_units,
         },
+        "detector_distance_error": {
+            "value": detector_calib.detector_distance_error,
+            "units": detector_calib.detector_distance_error_units,
+        },
     }
 
     outpath = Path(parsed_args.output_path)
-    outpath.mkdir(exist_ok=True)
+    outpath.mkdir(exist_ok=True, parents=True)
 
     outname = Path(parsed_args.outname).with_suffix(".nxs")
 
     CalibrantFileWriter(datadict=data_out, writepath=outpath / outname).writer()
 
-    if not parsed_args.no_plots:
-        save_all_figures(outpath)
+    # if not parsed_args.no_plots:
+    save_all_figures(outpath, saving=not parsed_args.no_plots)

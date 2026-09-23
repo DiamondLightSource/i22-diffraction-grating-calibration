@@ -2,10 +2,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
-# NXbeam, NXdetector, NXdetector_module, NXinstrument, NXsample and
-# NXtransformations are generated dynamically at import time by nexusformat
-# (see nexusformat.nexus.tree._makeclass), so pyright cannot see them statically.
 from nexusformat.nexus import (
     NeXusError,
     NXbeam,  # pyright: ignore[reportAttributeAccessIssue]
@@ -40,6 +36,7 @@ class CalibrantFileWriter:
             "pixel_size": {"value": float, "units": str},
             "beam_center": {"x": float, "y": float, "units": str},
             "detector_distance": {"value": float, "units": str},
+            "detector_distance_error": {"value": float, "units": str},
         }
         self.valid_data = self.data_validation(self.datadict, schema)
 
@@ -100,6 +97,8 @@ class CalibrantFileWriter:
         beam_center = self.datadict["beam_center"]
         pixel_size = self.datadict["pixel_size"]
         detector_distance = self.datadict["detector_distance"]
+        detector_distance_error = self.datadict["detector_distance_error"]
+
         detector_vector = np.array(
             [beam_center.get("x"), beam_center.get("y"), detector_distance.get("value")]
         )
@@ -137,6 +136,11 @@ class CalibrantFileWriter:
             detector_distance.get("value"),
             dtype="float64",
             units=detector_distance.get("units"),
+        )
+        nx_detector.distance_error = NXfield(
+            detector_distance_error.get("value"),
+            dtype="float64",
+            units=detector_distance_error.get("units"),
         )
 
         # detector module

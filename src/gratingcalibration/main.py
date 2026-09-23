@@ -17,14 +17,21 @@ from gratingcalibration.detector_calibration import (
 )
 
 
-def save_all_figures(output_dir: Path) -> None:
+def save_all_figures(output_dir: Path, saving: bool = True) -> None:
     """
     save all figures that have been generated along the way in the output directory
     """
+    n_figs = len(plt.get_fignums())
     for num in plt.get_fignums():
         fig = plt.figure(num)
         label = fig.get_label() or f"fig{num}"
-        fig.savefig(output_dir / f"{label}.png", dpi=200, bbox_inches="tight")
+        if saving:
+            fig.savefig(output_dir / f"{label}.png", dpi=200, bbox_inches="tight")
+        # we do this so that only the last figure gets opened.
+        # hacky but I think this is the only way.
+        if num != n_figs:
+            plt.close(fig)
+    plt.show()
 
 
 def main(args: Sequence[str] | None = None) -> None:
@@ -249,5 +256,5 @@ def main(args: Sequence[str] | None = None) -> None:
 
     CalibrantFileWriter(datadict=data_out, writepath=outpath / outname).writer()
 
-    if not parsed_args.no_plots:
-        save_all_figures(outpath)
+    # if not parsed_args.no_plots:
+    save_all_figures(outpath, saving=not parsed_args.no_plots)

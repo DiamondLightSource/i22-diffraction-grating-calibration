@@ -68,8 +68,6 @@ The distance of the detector is defined as:
 
 $$ \texttt{detector\_distance} = \texttt{fringe\_spacing} * \texttt{grating\_spacing} / \lambda $$
 
-
-
 where $\lambda$ is the wavelength of the incident beam, $\texttt{grating\_spacing}$ is the known spacing of the diffraction grating, and $\texttt{fringe\_spacing}$ is the measured spacing of the diffraction fringes (see the final figure at the bottom of this documentation).
 
 The NeXuS file generated for calibration contains an entry for the detector distance, and an error. Currently, the error is entirely derived from the error in the slope fitted to the index/q data (again, see the final figure in this documentation). If in future error in beam energy (from which wavelength is derived), or the grating spacing itself becomes available, this will also be taken into account.

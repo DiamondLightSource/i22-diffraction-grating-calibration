@@ -2,10 +2,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
-# NXbeam, NXdetector, NXdetector_module, NXinstrument, NXsample and
-# NXtransformations are generated dynamically at import time by nexusformat
-# (see nexusformat.nexus.tree._makeclass), so pyright cannot see them statically.
 from nexusformat.nexus import (
     NeXusError,
     NXbeam,  # pyright: ignore[reportAttributeAccessIssue]

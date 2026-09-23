@@ -17,7 +17,6 @@ dependencies = [
     "numpy",
     "lmfit",
     "scipy",
-    "scikit-learn",
     "matplotlib",
     "nexusformat",
     "pyfai",

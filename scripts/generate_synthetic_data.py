@@ -49,7 +49,8 @@ from gratingcalibration import PILATUS2M_PIXEL_SIZE
 
 # --- fixed detector geometry, matched to .example_data/first & second -----
 DETECTOR_SHAPE = (1679, 1475)  # (rows, cols)
-BEAM_CENTER_PX = {"x": 797.8, "y": 89.0}
+# BEAM_CENTER_PX = {"x": 797.8, "y": 89.0}
+BEAM_CENTER_PX = {"x": 797.8, "y": 839.5}
 BEAM_ENERGY_KEV = 14.0
 GRATING_SPACING_M = 100e-9  # matches the CLI tool's --grating-spacing default
 BEAMSTOP_RADIUS_PX = 15.0
@@ -260,8 +261,8 @@ def build_pattern(
     image = baseline * (1 + RIDGE_BOOST * fan) * (1 + boost_calibration + boost_streak)
 
     for lo, hi in MODULE_GAP_BANDS:
-        y0 = max(0, int(cy) + lo)
-        y1 = min(ny, int(cy) + hi)
+        y0 = max(0, lo)
+        y1 = min(ny, hi)
         if y0 < y1:
             image[y0:y1, :] = 0
 

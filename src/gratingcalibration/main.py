@@ -81,10 +81,14 @@ def main(args: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--output-path",
         type=Path,
-        default="calibration",
+        default="processing",
         dest="output_path",
         help=(
-            "Path to where calibration file will be written. Defaults to 'calibration'"
+            "Relative path to where calibration file will be written. "
+            "Defaults to 'processing'. Accepts any pathtype, "
+            "but will be relative by default. "
+            "Extended paths (e.g. `processing/my/experiment`) can be given"
+            ", directories will be created if not already found"
         ),
     )
     parser.add_argument(
@@ -234,7 +238,7 @@ def main(args: Sequence[str] | None = None) -> None:
     }
 
     outpath = Path(parsed_args.output_path)
-    outpath.mkdir(exist_ok=True)
+    outpath.mkdir(exist_ok=True, parents=True)
 
     outname = Path(parsed_args.outname).with_suffix(".nxs")
 

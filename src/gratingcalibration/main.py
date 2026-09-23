@@ -17,7 +17,9 @@ from gratingcalibration.detector_calibration import (
 )
 
 
-def save_all_figures(output_dir: Path, saving: bool = True) -> None:
+def save_all_figures(
+    output_dir: Path, saving: bool = True, showing: bool = True
+) -> None:
     """
     save all figures that have been generated along the way in the output directory
     """
@@ -31,7 +33,8 @@ def save_all_figures(output_dir: Path, saving: bool = True) -> None:
         # hacky but I think this is the only way.
         if num != n_figs:
             plt.close(fig)
-    plt.show()
+    if showing:
+        plt.show()
 
 
 def main(args: Sequence[str] | None = None) -> None:
@@ -106,10 +109,20 @@ def main(args: Sequence[str] | None = None) -> None:
         help="Name of output calibration file. Defaults to 'SAXS_calibration'",
     )
     parser.add_argument(
-        "--no-plots",
+        "--no-save-plots",
         action="store_true",
-        dest="no_plots",
+        dest="no_save_plots",
         help="Don't save processing plots alongside the calibration file",
+    )
+    parser.add_argument(
+        "--no-show-plots",
+        action="store_true",
+        dest="no_show_plots",
+        help=(
+            "By default, the final calibration plot is shown interactively "
+            "when the program is run. use this flag to turn this behaviour "
+            "off and not show any plots"
+        ),
     )
 
     parsed_args = parser.parse_args(args)
@@ -256,5 +269,8 @@ def main(args: Sequence[str] | None = None) -> None:
 
     CalibrantFileWriter(datadict=data_out, writepath=outpath / outname).writer()
 
-    # if not parsed_args.no_plots:
-    save_all_figures(outpath, saving=not parsed_args.no_plots)
+    save_all_figures(
+        outpath,
+        saving=not parsed_args.no_save_plots,
+        showing=not parsed_args.no_show_plots,
+    )

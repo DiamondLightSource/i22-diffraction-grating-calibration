@@ -37,6 +37,10 @@ dev = [
     "tox-uv",
     "types-mock",
 ]
+[project.optional-dependencies]
+gui = [
+    "pyqt6",
+]
 
 [project.scripts]
 i22-diffraction-grating-calibration = "gratingcalibration.main:main"

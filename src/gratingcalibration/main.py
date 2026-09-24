@@ -3,6 +3,12 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+try:
+    import matplotlib
+
+    matplotlib.use("QtAgg")
+except ImportError:
+    pass
 import matplotlib.pyplot as plt
 
 from gratingcalibration import PILATUS2M_PIXEL_SIZE, __version__

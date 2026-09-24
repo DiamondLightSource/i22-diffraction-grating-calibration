@@ -37,9 +37,10 @@ dev = [
     "tox-uv",
     "types-mock",
 ]
+
 [project.optional-dependencies]
 gui = [
-    "pyqt6",
+    "PySide6",
 ]
 
 [project.scripts]
